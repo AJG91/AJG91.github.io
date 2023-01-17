@@ -1,2 +1,3 @@
-# AJG91.github.io
-A place to consolidate all my work.
+# Alberto J. Garcia
+* [My Github page](https://github.com/AJG91)
+* [My INSPIRE page](https://inspirehep.net/authors/2099882)
