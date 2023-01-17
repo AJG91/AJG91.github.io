@@ -1,0 +1,68 @@
+name: Alberto J. Garcia
+url: "https://ajg91.github.io/"
+
+markdown: kramdown
+remote_theme: "mmistakes/minimal-mistakes"
+minimal_mistakes_skin: "dirt"
+
+title: "AJG's Homepage"
+tagline: "Welcome!"
+#logo: "/assets/images/garcia.823.jpg"
+description: A place for my projects.
+
+include:
+  - _pages
+
+plugins:
+ - jekyll-paginate
+ - jekyll-sitemap
+ - jekyll-gist
+ - jekyll-feed
+ - jekyll-include-cache
+ 
+whitelist:
+  - jekyll-paginate
+  - jekyll-sitemap
+  - jekyll-gist
+  - jekyll-feed
+  - jekyll-include-cache
+
+collections:
+  talks:
+    output: true
+    permalink: /:collection/:path/
+  publications:
+    output: true
+    permalink: /:collection/:path/
+  software:
+    output: true
+    permalink: /:collection/:path/
+
+defaults:
+  - scope:
+      path: ""
+      type: pages
+    values:
+      layout: single
+      mathjax: true
+  - scope:
+      path: ""
+      type: talks
+    values:
+      layout: single
+      mathjax: true
+      author_profile: true
+  - scope:
+      path: ""
+      type: publications
+    values:
+      layout: single
+      mathjax: true
+      author_profile: false
+  - scope:
+      path: ""
+      type: software
+    values:
+      layout: single
+      mathjax: true
+      author_profile: false
