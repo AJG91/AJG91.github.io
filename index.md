@@ -3,6 +3,8 @@ layout: single
 title: Welcome to my webpage!
 ---
 
+<img src="/assets/images/garcia.823.jpg"
+     alt="Picture of me" class="center">
 
 I am a PhD candidate in low-energy nuclear physics at the Ohio State University. My focus is primarily on building emulators and neural networks for nucleon interaction problems.
 
