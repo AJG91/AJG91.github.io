@@ -14,6 +14,7 @@ My Master's thesis focused on analyzing the probabilities of cooper pairs tunnel
 
 The purpose of this page is to keep all my publications, presentations, and projects in one place. Feel free to browse around.
 
+* [My Resume](./assets/resume/Resume_2023_online.pdf)
 * [My Github page](https://github.com/AJG91)
 * [My INSPIRE page](https://inspirehep.net/authors/2099882)
 
