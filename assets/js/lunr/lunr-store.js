@@ -4,4 +4,4 @@ var store = [{
         "tags": [],
         "url": "/2025/08/16/sample-post.html",
         "teaser": null
-      }]
+      },]

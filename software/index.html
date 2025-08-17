@@ -10,7 +10,7 @@
   <head>
     <meta charset="utf-8">
 
-<!-- begin _includes/seo.html --><title>Welcome! - AJG’s Homepage</title>
+<!-- begin _includes/seo.html --><title>Software - AJG’s Homepage</title>
 <meta name="description" content="A place for my projects.">
 
 
@@ -18,8 +18,8 @@
 <meta property="og:type" content="website">
 <meta property="og:locale" content="en_US">
 <meta property="og:site_name" content="AJG&#39;s Homepage">
-<meta property="og:title" content="Welcome!">
-<meta property="og:url" content="https://ajg91.github.io//">
+<meta property="og:title" content="Software">
+<meta property="og:url" content="https://ajg91.github.io//software/">
 
 
   <meta property="og:description" content="A place for my projects.">
@@ -35,20 +35,10 @@
 
 
 
-<link rel="canonical" href="https://ajg91.github.io//">
+<link rel="canonical" href="https://ajg91.github.io//software/">
 
 
 
-
-
-  <script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "Person",
-    "name": "Alberto J. Garcia",
-    "url": "https://ajg91.github.io//"
-}
-</script>
 
 
 
@@ -85,7 +75,7 @@
 
   </head>
 
-  <body class="layout--home" dir="ltr">
+  <body class="layout--archive" dir="ltr">
     <nav class="skip-links">
   <ul>
     <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
@@ -147,73 +137,41 @@
 
   <div class="archive">
     
-      <h1 id="page-title" class="page__title">Welcome!</h1>
+      <h1 id="page-title" class="page__title">Software</h1>
     
-    <p><img src="/assets/images/garcia.823.jpg" alt="Picture of me" class="center" /></p>
+    <hr>
 
-<p>I am a nuclear physicist interested in working on cool projects. My recent interests mostly revolve around AI and machine learning.</p>
-
-<p>I graduated with a PhD from the Ohio State University (OSU) in 2023. My thesis focused on developing reduced-order models for fast &amp; accurate emulation of NN observables. There are different ways of accomplishing this, but it ultimately depends on what reduction scheme you choose. My main focus has been on developing model-driven (intrusive) projection-based approaches to predict neutron-proton (np) scattering observables. I have also worked on applying data-driven (non-intrusive) approaches, such as feed-forward artificial neural networks, to No Core Shell Model (NCSM) data in order to predict ground-state binding energies and radii of various nuclei. These codes were written using Python and are available under ‘‘Software’’.</p>
-
-<p>I graduated with a Master’s from the California State University, Long Beach (CSULB) in 2018. My thesis focused on analyzing the probabilities of cooper pairs tunneling through Josephson junctions with an inhomogeneous magnetic medium. This was done by applying the Bogoliubov-Valatin transformations in the ballistic (impurity-free) regime for a tight-binding Hamiltionian and solving the resulting Bogoliubov-de Gennes equations (eigenvalue problem). The results were then compared to previous results obtained in the diffusive (impurity-ridden) regime. These codes were written in Modern Fortran.</p>
-
-<p>The purpose of this page is to keep all my publications, presentations, and projects in one place. Feel free to browse around.</p>
-
-<!--
-* [My Resume](./assets/resume/Resume_2023_online.pdf)>
--->
+<h2 class="archive__subtitle">Jupyter notebooks</h2>
 <ul>
-  <li><a href="https://github.com/AJG91">My Github page</a></li>
-  <li><a href="https://inspirehep.net/authors/2099882">My INSPIRE page</a></li>
+  <li>
+   <a href="https://github.com/AJG91/scattering-emulators">Notebooks and data</a> to generate all results and figures in
+   <i>"Wave function-based emulation for nucleon-nucleon scattering in momentum space"</i>
+       by Garcia, Drischler, Furnstahl, Melendez, and Zhang,
+   <a href="https://arxiv.org/abs/2301.05093">arXiv:2301.05093</a>.
+  </li>
+</ul>
+<ul>
+  <li>
+   <a href="https://github.com/AJG91/square-well-emulators">Notebooks</a> used run tests and generate preliminary results for the paper
+   <i>"Efficient emulators for scattering using eigenvector continuation"</i>
+       by Furnstahl, Garcia, Millican, and Zhang,
+   <a href="https://arxiv.org/abs/2007.03635">arXiv:2007.03635</a>.
+  </li>
+</ul>
+<ul>
+  <li>
+   <a href="https://github.com/AJG91/ncsm-neural-network">Notebooks and data</a> used to predict ground-state properties on NN scattering using feed-forward artificial neural networks and no-core shell model (NCSM) data for He-4.
+  </li>
 </ul>
 
-<p>Alberto Garcia</p>
+<h2 class="archive__subtitle">C++ projects</h2>
+<ul>
+  <li>
+   <a href="https://github.com/AJG91/receipt">Code</a> that takes in order inputs from customers and prints a receipt.</i>
+  </li>
+</ul>
 
-
-
-<h3 class="archive__subtitle">Recent Posts</h3>
-
-
-
-
-<div class="entries-list">
-  
-
-
-
-
-
-
-
-<div class="list__item">
-  <article class="archive__item" itemscope itemtype="https://schema.org/CreativeWork">
-    
-    <h2 class="archive__item-title no_toc" itemprop="headline">
-      
-        <a href="/2025/08/16/sample-post.html" rel="permalink">Sample Post
-</a>
-      
-    </h2>
-    
-
-
-    <p class="archive__item-excerpt" itemprop="description">
-
-
-Title: “Sample Blog Post with LaTeX and Plots”
-Date: 2025-08-16
-Categories: [blog]
-—
-
-This is a sample post converted from a Jupyter notebook.
-
-Inline mat...</p>
-  </article>
-</div>
-
-</div>
-
-
+<hr>
 
 
   </div>
