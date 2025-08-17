@@ -11,6 +11,16 @@ bundle exec jekyll build
 # Go into _site
 cd _site
 
+# Check for unrendered LaTeX
+echo "Checking for unrendered LaTeX..."
+unrendered_count=$(grep -R '\\\\\(|\\\\\[|\$[^\$]' . | wc -l)
+
+if [ "$unrendered_count" -gt 0 ]; then
+    echo "Warning: $unrendered_count potential unrendered LaTeX instances found."
+    echo "Proceeding with commit and push anyway."
+fi
+
+
 # Add all changes
 echo "Adding changes to git..."
 git add .
