@@ -1,7 +1,7 @@
 var store = [{
-        "title": "Sample Post",
-        "excerpt":"layout: single Title: “Sample Blog Post with LaTeX and Plots” Date: 2025-08-16 Categories: [blog] — HELLO FROM INCLUDE This is a sample post converted from a Jupyter notebook. The formula $x^2 + y^2 = z^2$ is Pythagoras’ theorem. Block math example: \\[\\int_0^\\infty e^{-x} dx = 1\\] Here’s a sample plot:...","categories": [],
+        "title": "Sample Blog Post with LaTeX and Plots",
+        "excerpt":"HELLO FROM INCLUDE   This is a sample post converted from a Jupyter notebook.   The formula $x^2 + y^2 = z^2$ is Pythagoras’ theorem.   Block math example:   \\[\\int_0^\\infty e^{-x} dx = 1\\]  Here’s a sample plot:       ","categories": ["blog"],
         "tags": [],
-        "url": "/2025/08/16/sample-post.html",
+        "url": "/blog/2025/08/17/sample-post.html",
         "teaser": null
       },]
