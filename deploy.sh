@@ -13,7 +13,7 @@ cd _site
 
 # Check for unrendered LaTeX using fixed grep
 echo "Checking for unrendered LaTeX..."
-unrendered_count=$(grep -RE '\\\(|\\\[|\$[^\$]' . | wc -l)
+unrendered_count=$(grep -RE '\\\(|\\\[|\$[^\$]' . --include \*.html --exclude-dir=_includes --exclude-dir=_layouts | wc -l)
 
 if [ "$unrendered_count" -gt 0 ]; then
     echo "Warning: $unrendered_count potential unrendered LaTeX instances found."
