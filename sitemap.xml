@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd" xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 <url>
-<loc>https://ajg91.github.io//blog/2025/08/17/sample-post.html</loc>
-<lastmod>2025-08-17T00:00:00-07:00</lastmod>
+<loc>https://ajg91.github.io//blog/2025/08/16/projectile-motion.html</loc>
+<lastmod>2025-08-16T00:00:00-07:00</lastmod>
+</url>
+<url>
+<loc>https://ajg91.github.io//blog/2025/08/23/linear-regression-with-scikit-learn.html</loc>
+<lastmod>2025-08-23T00:00:00-07:00</lastmod>
 </url>
 <url>
 <loc>https://ajg91.github.io//contact/</loc>
