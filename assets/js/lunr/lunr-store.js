@@ -5,7 +5,7 @@ var store = [{
         "url": "/blog/2025/08/16/projectile-motion.html",
         "teaser": null
       },{
-        "title": "Linear regression with Scikit-Learn: projectile motion",
+        "title": "Linear regression with Scikit-Learn: projectile motion example",
         "excerpt":"August 23, 2025 Last time, we went over projectile motion and how to code the equations up in Python. In this post, I will show how to apply linear regression in Python using Scikit-learn’s LinearRegression. The example we will be working with is a standard two-dimensional kinematics problem. We will...","categories": ["blog"],
         "tags": [],
         "url": "/blog/2025/08/23/linear-regression-with-scikit-learn.html",
