@@ -195,7 +195,7 @@ v_y = v_{y0} + g t^2,\]
 
 <p>where now we have added equations for $x$ and $y$ independently. Here, $g$ is the acceleration due to gravity $g = -9.81 \, m/s^2$. A keen eye would notice that there is an acceleration term in the $y$ equations, but not in the $x$ equations. This is because the only acceleration present is the one due to gravity. More complicated problem can model other accelerations, but for a simple kinematics problem $y$ will only have acceleration due to gravity and $x$ will have no acceleration. Here is a graph of the equation with the accompanying Python code:</p>
 
-<p><img src="/assets/images/linear_regression/proj_motion_plot.png" alt="Sample Plot" /></p>
+<p><img src="/assets/images/linear_regression/proj_motion_plot.png=100x20" alt="proj_motion" /></p>
 
 <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">pos_eq</span><span class="p">(</span><span class="n">p0</span><span class="p">,</span> <span class="n">v0</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">noise</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
     <span class="n">p</span> <span class="o">=</span> <span class="n">p0</span> <span class="o">+</span> <span class="n">v0</span><span class="o">*</span><span class="n">t</span> <span class="o">+</span> <span class="mf">0.5</span><span class="o">*</span><span class="n">a</span><span class="o">*</span><span class="n">t</span><span class="o">**</span><span class="mi">2</span>

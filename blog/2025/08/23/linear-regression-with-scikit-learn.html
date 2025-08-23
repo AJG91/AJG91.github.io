@@ -219,15 +219,15 @@ For the $y$ position, we need to reshape the input variables $t_{rand}$ and $t_{
 
 <p>Here are the results of the linear regression:</p>
 
-<p><img src="/assets/images/linear_regression/linear_reg_sklearn.png" alt="Sample Plot" /></p>
+<p><img src="/assets/images/linear_regression/linear_reg_sklearn.png=100x20" alt="lr_skl" /></p>
 
 <p>The following plot shows how the trajectory would look to a person watching the object being thrown.</p>
 
-<p><img src="/assets/images/linear_regression/linear_reg_skl_y_vs_x.png" alt="Sample Plot" /></p>
+<p><img src="/assets/images/linear_regression/linear_reg_skl_y_vs_x.png=100x20" alt="lr_skl_y_vs_x" /></p>
 
 <p>The plot on the left shows the linear regression process for the $x$ position and the one on the right for the $y$ position. From the legend, we see that the true values that were used to pick the random times are given in yellow triangles, the true values for the times we are trying to predict are given by the brown line, the training values ($t_{rand}$) are given by the black x, the predicted position of the $t_rand$ values are given by blue dots, and the prediction for the new times are given by red dots. As can be seen, the model does a good job of predicting for the times we do not have positions for since the predictions match up with the truth.</p>
 
-<p><img src="/assets/images/linear_regression/linear_reg_skl_y_vs_x.png" alt="Sample Plot" /></p>
+<p><img src="/assets/images/linear_regression/linear_reg_abs_err_skl.png=100x20" alt="lr_skl_abs_err" /></p>
 
 <p>The absolute errors are shown above. The overall mean square error (MSE) is on the order of $10^{-2}$, which in this case is good enough since we are dealing with meters. The reason as to why the MSE is not smaller is because of the noise we added to the data. In this case, the noise is the most dominant error, which prevents the model from achieving a more accurate prediction.</p>
 
