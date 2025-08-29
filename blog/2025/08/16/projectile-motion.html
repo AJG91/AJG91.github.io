@@ -1,0 +1,318 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.27.3 by Michael Rose
+  Copyright 2013-2025 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE
+-->
+
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin _includes/seo.html --><title>Linear regression: A review of projectile motion - AJG’s Homepage</title>
+<meta name="description" content="August 16, 2025  With all the buzz surrounding AI and machine learning, it is not uncommon to hear the term ‘‘linear regression’’ being thrown around. But what is linear regression? Linear regression is a technique that can be used to model the relationship between a dependent quantity and an independent quantity. For example, the weather is a dependent quantity that depends on the time of day, which is the independent quantity. The method is called linear because it models using a linear relationship. Overall, you are trying to learn the relationship between two variables using a linear fit.  With linear regression, one can then use the independent quantities to predict the its dependent counterpart. For example, if we applied linear regression to a data composed of energies and their corresponding potential energies, we can make predictions on energies that we do not have data on.  Before that, I will do a quick review on projectile motion and show how to code the kinematic equations up in Python. Kinematics is the study of how objects move, with the focus being on quantities such as time, velocity, and position as opposed to forces. Some basics equations that describe kinematics in one-dimension are  [\begin{aligned} x &amp;= x_0 + v_0 t + \frac{1}{2} a t^2, v &amp;= v_0 + a t^2. \end{aligned}]  Here, $x$ is the final position, $v$ is the final velocity, $x_0$ is the initial position, $v_0$ is the initial velocity, $a$ is the acceleration, and $t$ is the time. If we want to consider motion in two dimensions, we must increase the number of equations. Now, we have  [\begin{aligned} x &amp;= x_0 + v_{x0} t, y &amp;= y_0 + v_{y0} t + \frac{1}{2} g t^2,\ \[0.1em] v_{x0} &amp;= v_0 cos(\theta), v_{y0} &amp;= v_0 sin(\theta),\ \[0.1em] v_x &amp;= v_{x0}, v_y &amp;= v_{y0} + g t^2, \end{aligned}]  where now we have added equations for $x$ and $y$ independently. Here, $g$ is the acceleration due to gravity $g = -9.81 \, m/s^2$. A keen eye would notice that there is an acceleration term in the $y$ equations, but not in the $x$ equations. This is because the only acceleration present is the one due to gravity. More complicated problem can model other accelerations, but for a simple kinematics problem $y$ will only have acceleration due to gravity and $x$ will have no acceleration. Here is a graph of the equation with the accompanying Python code:    def pos_eq(p0, v0, a, t, noise=False):     p = p0 + v0*t + 0.5*a*t**2      if noise:         p += tc.rand(t.shape)     return p  noise = True  ax = tc.asarray([0]) g = tc.asarray([-9.81])  x0 = tc.asarray([0]) y0 = tc.asarray([0]) v0 = tc.asarray([40]) theta = tc.asarray([45]) v0x = v0*tc.cos(theta) v0y = v0*tc.sin(theta)  t = tc.linspace(0, 5, 20) x_t = pos_eq(x0, v0x, ax, t, noise) y_t = pos_eq(y0, v0y, g, t, noise)  t_pred = tc.linspace(5.5, 8, 8).reshape(-1, 1) x_t_pred = pos_eq(x0, v0x, ax, t_pred, noise) y_t_pred = pos_eq(y0, v0y, g, t_pred, noise)   As we can see from the code I will be modeling an object being thrown at a $45$ degree angle with a velocity of $v_0 = 40$ m/s. The initial start point will be $x_0 = y_0 = 0$ m. The object will travel for $t = 5$ s. We also define times where the model will be trying to predict the position, $t_\text{pred}$. In order to draw comparisons between the model and the truth, we calculate what the true positions should be. We also choose to add a small amount of random Gaussian noise to the positions.  Next time, I will go over using Scikit-learn to apply linear regression to the projectile motion problem we just went over. Stay tuned!  ⬅ Back to Home">
+
+
+
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="AJG&#39;s Homepage">
+<meta property="og:title" content="Linear regression: A review of projectile motion">
+<meta property="og:url" content="https://ajg91.github.io//blog/2025/08/16/projectile-motion.html">
+
+
+  <meta property="og:description" content="August 16, 2025  With all the buzz surrounding AI and machine learning, it is not uncommon to hear the term ‘‘linear regression’’ being thrown around. But what is linear regression? Linear regression is a technique that can be used to model the relationship between a dependent quantity and an independent quantity. For example, the weather is a dependent quantity that depends on the time of day, which is the independent quantity. The method is called linear because it models using a linear relationship. Overall, you are trying to learn the relationship between two variables using a linear fit.  With linear regression, one can then use the independent quantities to predict the its dependent counterpart. For example, if we applied linear regression to a data composed of energies and their corresponding potential energies, we can make predictions on energies that we do not have data on.  Before that, I will do a quick review on projectile motion and show how to code the kinematic equations up in Python. Kinematics is the study of how objects move, with the focus being on quantities such as time, velocity, and position as opposed to forces. Some basics equations that describe kinematics in one-dimension are  [\begin{aligned} x &amp;= x_0 + v_0 t + \frac{1}{2} a t^2, v &amp;= v_0 + a t^2. \end{aligned}]  Here, $x$ is the final position, $v$ is the final velocity, $x_0$ is the initial position, $v_0$ is the initial velocity, $a$ is the acceleration, and $t$ is the time. If we want to consider motion in two dimensions, we must increase the number of equations. Now, we have  [\begin{aligned} x &amp;= x_0 + v_{x0} t, y &amp;= y_0 + v_{y0} t + \frac{1}{2} g t^2,\ \[0.1em] v_{x0} &amp;= v_0 cos(\theta), v_{y0} &amp;= v_0 sin(\theta),\ \[0.1em] v_x &amp;= v_{x0}, v_y &amp;= v_{y0} + g t^2, \end{aligned}]  where now we have added equations for $x$ and $y$ independently. Here, $g$ is the acceleration due to gravity $g = -9.81 \, m/s^2$. A keen eye would notice that there is an acceleration term in the $y$ equations, but not in the $x$ equations. This is because the only acceleration present is the one due to gravity. More complicated problem can model other accelerations, but for a simple kinematics problem $y$ will only have acceleration due to gravity and $x$ will have no acceleration. Here is a graph of the equation with the accompanying Python code:    def pos_eq(p0, v0, a, t, noise=False):     p = p0 + v0*t + 0.5*a*t**2      if noise:         p += tc.rand(t.shape)     return p  noise = True  ax = tc.asarray([0]) g = tc.asarray([-9.81])  x0 = tc.asarray([0]) y0 = tc.asarray([0]) v0 = tc.asarray([40]) theta = tc.asarray([45]) v0x = v0*tc.cos(theta) v0y = v0*tc.sin(theta)  t = tc.linspace(0, 5, 20) x_t = pos_eq(x0, v0x, ax, t, noise) y_t = pos_eq(y0, v0y, g, t, noise)  t_pred = tc.linspace(5.5, 8, 8).reshape(-1, 1) x_t_pred = pos_eq(x0, v0x, ax, t_pred, noise) y_t_pred = pos_eq(y0, v0y, g, t_pred, noise)   As we can see from the code I will be modeling an object being thrown at a $45$ degree angle with a velocity of $v_0 = 40$ m/s. The initial start point will be $x_0 = y_0 = 0$ m. The object will travel for $t = 5$ s. We also define times where the model will be trying to predict the position, $t_\text{pred}$. In order to draw comparisons between the model and the truth, we calculate what the true positions should be. We also choose to add a small amount of random Gaussian noise to the positions.  Next time, I will go over using Scikit-learn to apply linear regression to the projectile motion problem we just went over. Stay tuned!  ⬅ Back to Home">
+
+
+
+
+
+
+
+  <meta property="article:published_time" content="2025-08-16T00:00:00-07:00">
+
+
+
+
+
+
+<link rel="canonical" href="https://ajg91.github.io//blog/2025/08/16/projectile-motion.html">
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- end _includes/seo.html -->
+
+
+
+  <link href="/feed.xml" type="application/atom+xml" rel="alternate" title="AJG's Homepage Feed">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+  
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css"></noscript>
+
+
+
+    <script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$','$$'], ['\\[','\\]']]
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
+  </head>
+
+  <body class="layout--single" dir="ltr">
+    <nav class="skip-links">
+  <ul>
+    <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
+    <li><a href="#main" class="screen-reader-shortcut">Skip to content</a></li>
+    <li><a href="#footer" class="screen-reader-shortcut">Skip to footer</a></li>
+  </ul>
+</nav>
+
+    
+
+<div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        
+        <a class="site-title" href="/">
+          AJG&#39;s Homepage
+          
+        </a>
+        <ul class="visible-links"><li class="masthead__menu-item">
+              <a
+                href="/publications/"
+                
+                
+              >Publications</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/talks/"
+                
+                
+              >Talks</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/software/"
+                
+                
+              >Software</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/contact/"
+                
+                
+              >Contact Me</a>
+            </li></ul>
+        
+        <button class="greedy-nav__toggle hidden" type="button">
+          <span class="visually-hidden">Toggle menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+
+    <div class="initial-content">
+      
+
+
+
+
+
+<div id="main" role="main">
+  
+
+
+  <article class="page" itemscope itemtype="https://schema.org/CreativeWork">
+    <meta itemprop="headline" content="Linear regression: A review of projectile motion">
+    <meta itemprop="description" content="August 16, 2025With all the buzz surrounding AI and machine learning, it is not uncommon to hear the term ‘‘linear regression’’ being thrown around. But what is linear regression? Linear regression is a technique that can be used to model the relationship between a dependent quantity and an independent quantity. For example, the weather is a dependent quantity that depends on the time of day, which is the independent quantity. The method is called linear because it models using a linear relationship. Overall, you are trying to learn the relationship between two variables using a linear fit.With linear regression, one can then use the independent quantities to predict the its dependent counterpart. For example, if we applied linear regression to a data composed of energies and their corresponding potential energies, we can make predictions on energies that we do not have data on.Before that, I will do a quick review on projectile motion and show how to code the kinematic equations up in Python. Kinematics is the study of how objects move, with the focus being on quantities such as time, velocity, and position as opposed to forces. Some basics equations that describe kinematics in one-dimension are[\begin{aligned}x &amp;= x_0 + v_0 t + \frac{1}{2} a t^2,v &amp;= v_0 + a t^2.\end{aligned}]Here, $x$ is the final position, $v$ is the final velocity, $x_0$ is the initial position, $v_0$ is the initial velocity, $a$ is the acceleration, and $t$ is the time. If we want to consider motion in two dimensions, we must increase the number of equations. Now, we have[\begin{aligned}x &amp;= x_0 + v_{x0} t,y &amp;= y_0 + v_{y0} t + \frac{1}{2} g t^2,\ \[0.1em]v_{x0} &amp;= v_0 cos(\theta),v_{y0} &amp;= v_0 sin(\theta),\ \[0.1em]v_x &amp;= v_{x0},v_y &amp;= v_{y0} + g t^2,\end{aligned}]where now we have added equations for $x$ and $y$ independently. Here, $g$ is the acceleration due to gravity $g = -9.81 \, m/s^2$. A keen eye would notice that there is an acceleration term in the $y$ equations, but not in the $x$ equations. This is because the only acceleration present is the one due to gravity. More complicated problem can model other accelerations, but for a simple kinematics problem $y$ will only have acceleration due to gravity and $x$ will have no acceleration. Here is a graph of the equation with the accompanying Python code:def pos_eq(p0, v0, a, t, noise=False):    p = p0 + v0*t + 0.5*a*t**2    if noise:        p += tc.rand(t.shape)    return pnoise = Trueax = tc.asarray([0])g = tc.asarray([-9.81])x0 = tc.asarray([0])y0 = tc.asarray([0])v0 = tc.asarray([40])theta = tc.asarray([45])v0x = v0*tc.cos(theta)v0y = v0*tc.sin(theta)t = tc.linspace(0, 5, 20)x_t = pos_eq(x0, v0x, ax, t, noise)y_t = pos_eq(y0, v0y, g, t, noise)t_pred = tc.linspace(5.5, 8, 8).reshape(-1, 1)x_t_pred = pos_eq(x0, v0x, ax, t_pred, noise)y_t_pred = pos_eq(y0, v0y, g, t_pred, noise)As we can see from the code I will be modeling an object being thrown at a $45$ degree angle with a velocity of $v_0 = 40$ m/s. The initial start point will be $x_0 = y_0 = 0$ m. The object will travel for $t = 5$ s. We also define times where the model will be trying to predict the position, $t_\text{pred}$. In order to draw comparisons between the model and the truth, we calculate what the true positions should be. We also choose to add a small amount of random Gaussian noise to the positions.Next time, I will go over using Scikit-learn to apply linear regression to the projectile motion problem we just went over. Stay tuned!⬅ Back to Home">
+    <meta itemprop="datePublished" content="2025-08-16T00:00:00-07:00">
+    
+
+    <div class="page__inner-wrap">
+      
+        <header>
+          <h1 id="page-title" class="page__title" itemprop="headline">
+            <a href="https://ajg91.github.io//blog/2025/08/16/projectile-motion.html" itemprop="url">Linear regression: A review of projectile motion
+</a>
+          </h1>
+          
+
+
+        </header>
+      
+
+      <section class="page__content" itemprop="text">
+        
+        <p class="post-date">August 16, 2025</p>
+
+<p>With all the buzz surrounding AI and machine learning, it is not uncommon to hear the term ‘‘linear regression’’ being thrown around. But what is linear regression? Linear regression is a technique that can be used to model the relationship between a dependent quantity and an independent quantity. For example, the weather is a dependent quantity that depends on the time of day, which is the independent quantity. The method is called linear because it models using a linear relationship. Overall, you are trying to learn the relationship between two variables using a linear fit.</p>
+
+<p>With linear regression, one can then use the independent quantities to predict the its dependent counterpart. For example, if we applied linear regression to a data composed of energies and their corresponding potential energies, we can make predictions on energies that we <em>do not</em> have data on.</p>
+
+<p>Before that, I will do a quick review on projectile motion and show how to code the kinematic equations up in Python. Kinematics is the study of how objects move, with the focus being on quantities such as time, velocity, and position as opposed to forces. Some basics equations that describe kinematics in one-dimension are</p>
+
+\[\begin{aligned}
+x &amp;= x_0 + v_0 t + \frac{1}{2} a t^2,\\
+v &amp;= v_0 + a t^2.
+\end{aligned}\]
+
+<p>Here, $x$ is the final position, $v$ is the final velocity, $x_0$ is the initial position, $v_0$ is the initial velocity, $a$ is the acceleration, and $t$ is the time. If we want to consider motion in two dimensions, we must increase the number of equations. Now, we have</p>
+
+\[\begin{aligned}
+x &amp;= x_0 + v_{x0} t,\\
+y &amp;= y_0 + v_{y0} t + \frac{1}{2} g t^2,\\ \\[0.1em]
+v_{x0} &amp;= v_0 cos(\theta),\\
+v_{y0} &amp;= v_0 sin(\theta),\\ \\[0.1em]
+v_x &amp;= v_{x0},\\
+v_y &amp;= v_{y0} + g t^2,
+\end{aligned}\]
+
+<p>where now we have added equations for $x$ and $y$ independently. Here, $g$ is the acceleration due to gravity $g = -9.81 \, m/s^2$. A keen eye would notice that there is an acceleration term in the $y$ equations, but not in the $x$ equations. This is because the only acceleration present is the one due to gravity. More complicated problem can model other accelerations, but for a simple kinematics problem $y$ will only have acceleration due to gravity and $x$ will have no acceleration. Here is a graph of the equation with the accompanying Python code:</p>
+
+<p><img src="/assets/images/linear_regression/proj_motion_plot.png" alt="proj_motion" /></p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">pos_eq</span><span class="p">(</span><span class="n">p0</span><span class="p">,</span> <span class="n">v0</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">noise</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">p0</span> <span class="o">+</span> <span class="n">v0</span><span class="o">*</span><span class="n">t</span> <span class="o">+</span> <span class="mf">0.5</span><span class="o">*</span><span class="n">a</span><span class="o">*</span><span class="n">t</span><span class="o">**</span><span class="mi">2</span>
+
+    <span class="k">if</span> <span class="n">noise</span><span class="p">:</span>
+        <span class="n">p</span> <span class="o">+=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">rand</span><span class="p">(</span><span class="n">t</span><span class="p">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">p</span>
+
+<span class="n">noise</span> <span class="o">=</span> <span class="bp">True</span>
+
+<span class="n">ax</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">asarray</span><span class="p">([</span><span class="mi">0</span><span class="p">])</span>
+<span class="n">g</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">asarray</span><span class="p">([</span><span class="o">-</span><span class="mf">9.81</span><span class="p">])</span>
+
+<span class="n">x0</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">asarray</span><span class="p">([</span><span class="mi">0</span><span class="p">])</span>
+<span class="n">y0</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">asarray</span><span class="p">([</span><span class="mi">0</span><span class="p">])</span>
+<span class="n">v0</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">asarray</span><span class="p">([</span><span class="mi">40</span><span class="p">])</span>
+<span class="n">theta</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">asarray</span><span class="p">([</span><span class="mi">45</span><span class="p">])</span>
+<span class="n">v0x</span> <span class="o">=</span> <span class="n">v0</span><span class="o">*</span><span class="n">tc</span><span class="p">.</span><span class="nf">cos</span><span class="p">(</span><span class="n">theta</span><span class="p">)</span>
+<span class="n">v0y</span> <span class="o">=</span> <span class="n">v0</span><span class="o">*</span><span class="n">tc</span><span class="p">.</span><span class="nf">sin</span><span class="p">(</span><span class="n">theta</span><span class="p">)</span>
+
+<span class="n">t</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">20</span><span class="p">)</span>
+<span class="n">x_t</span> <span class="o">=</span> <span class="nf">pos_eq</span><span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">v0x</span><span class="p">,</span> <span class="n">ax</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">noise</span><span class="p">)</span>
+<span class="n">y_t</span> <span class="o">=</span> <span class="nf">pos_eq</span><span class="p">(</span><span class="n">y0</span><span class="p">,</span> <span class="n">v0y</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">noise</span><span class="p">)</span>
+
+<span class="n">t_pred</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">linspace</span><span class="p">(</span><span class="mf">5.5</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">8</span><span class="p">).</span><span class="nf">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="n">x_t_pred</span> <span class="o">=</span> <span class="nf">pos_eq</span><span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">v0x</span><span class="p">,</span> <span class="n">ax</span><span class="p">,</span> <span class="n">t_pred</span><span class="p">,</span> <span class="n">noise</span><span class="p">)</span>
+<span class="n">y_t_pred</span> <span class="o">=</span> <span class="nf">pos_eq</span><span class="p">(</span><span class="n">y0</span><span class="p">,</span> <span class="n">v0y</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">t_pred</span><span class="p">,</span> <span class="n">noise</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>As we can see from the code I will be modeling an object being thrown at a $45$ degree angle with a velocity of $v_0 = 40$ m/s. The initial start point will be $x_0 = y_0 = 0$ m. The object will travel for $t = 5$ s. We also define times where the model will be trying to predict the position, $t_\text{pred}$. In order to draw comparisons between the model and the truth, we calculate what the true positions should be. We also choose to add a small amount of random Gaussian noise to the positions.</p>
+
+<p>Next time, I will go over using Scikit-learn to apply linear regression to the projectile motion problem we just went over. Stay tuned!</p>
+
+<p><a href="/" class="btn">⬅ Back to Home</a></p>
+
+        
+      </section>
+
+      <footer class="page__meta">
+        
+        
+
+
+        
+
+  <p class="page__date"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Updated:</strong> <time class="dt-published" datetime="2025-08-16T00:00:00-07:00">August 16, 2025</time></p>
+
+      </footer>
+
+      
+
+      
+  <nav class="pagination">
+    
+      <a href="#" class="pagination--pager disabled">Previous</a>
+    
+    
+      <a href="/blog/2025/08/23/linear-regression-with-scikit-learn.html" class="pagination--pager" title="Linear regression: Applying Scikit-Learn to projectile motion example">Next</a>
+    
+  </nav>
+
+
+    </div>
+
+    
+  </article>
+
+  
+  
+</div>
+
+      
+    </div>
+
+    
+
+    <div id="footer" class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        
+
+<div class="page__footer-follow">
+  <ul class="social-icons">
+    
+
+    
+
+    
+      <li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+    
+  </ul>
+</div>
+
+
+<div class="page__footer-copyright">&copy; 2025 <a href="https://ajg91.github.io/">AJG&#39;s Homepage</a>. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/jekyll-themes/minimal-mistakes/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+
+  </body>
+</html>

@@ -1,0 +1,320 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.27.3 by Michael Rose
+  Copyright 2013-2025 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE
+-->
+
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin _includes/seo.html --><title>Linear regression: Applying Scikit-Learn to projectile motion example - AJG’s Homepage</title>
+<meta name="description" content="August 23, 2025  Last time, we went over projectile motion and how to code the equations up in Python. In this post, I will show how to apply linear regression in Python using Scikit-learn’s LinearRegression.  The example we will be working with is a standard two-dimensional kinematics problem. We will have data for only the first two-thirds of the path traveled and we will use linear regression to predict positions past what we have. I will exclusively work with PyTorch tensors and only convert to numpy arrays when needed.  We will be using the class sklearn.linear_model.LinearRegression. The following code applies the linear regression algorithm to our data using Scikit-learn:  def generate_rand_numbers(a, b, N):     return (b - a) * tc.rand(N) + a  a, b = t[0], t[-1] t_rand = generate_rand_numbers(a, b, t.shape[0]).reshape(-1, 1) x = pos_eq(x0, v0x, ax, t_rand, True) y = pos_eq(y0, v0y, ay, t_rand, True)  t_poly = tc.concat([t_rand, t_rand**2], dim=-1) t_poly_pred = tc.cat([t_pred, t_pred**2], dim=1)  model = LinearRegression() model.fit(t_rand, x) x_skl = np.squeeze(model.predict(t_rand)) x_skl_pred = np.squeeze(model.predict(t_pred))  model = LinearRegression() model.fit(t_poly, y) y_skl = np.squeeze(model.predict(t_poly)) y_skl_pred = np.squeeze(model.predict(t_poly_pred))   The process is as follows:    Generate random times within some interval give by the start and end time.   Calculate the position values of of random times for both $x$ and $y$.   Initialize the model.   Fit the model using the random times and their associated positions.   Use the model to predict the positions at new, unseen times.   One thing to note: For the $y$ position, we need to reshape the input variables $t_\text{rand}$ and $t_\text{pred}$ as shown by $t_\text{poly}$ and $t_\text{poly_pred}$. The reason is that the equations are not linear, but the class expects to perform a linear regression. The key here is that although the equations are not linear in $t$, they are in fact linear in the parameters that the model is trying to learn as shown below:  [y \approx w_1 x + w_2 x^2 + w_3 x^3 + b,]  where the parameters the model is trying to fit are $w_1$, $w_2$, $w_3$, and $b$.  Here are the results of the linear regression:    The following plot shows how the trajectory would look to a person watching the object being thrown.    The plot on the left shows the linear regression process for the $x$ position and the one on the right for the $y$ position. From the legend, we see that the true values that were used to pick the random times are given in yellow triangles, the true values for the times we are trying to predict are given by the brown line, the training values ($t_\text{rand}$) are given by the black x, the predicted position of the $t_\text{rand}$ values are given by blue dots, and the prediction for the new times are given by red dots. As can be seen, the model does a good job of predicting the positions for the times we do not have data for since the predictions match up with the truth.    The absolute errors are shown above. The overall mean square error (MSE) is on the order of $10^{-2}$, which in this case is good enough since we are dealing with meters. The reason as to why the MSE is not smaller is because of the noise we added to the data. In this case, the noise is the most dominant error, which prevents the model from achieving a more accurate prediction.  Next time, I will go over how to perform linear regression using PyTorch. Stay tuned!  ⬅ Back to Home">
+
+
+
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="AJG&#39;s Homepage">
+<meta property="og:title" content="Linear regression: Applying Scikit-Learn to projectile motion example">
+<meta property="og:url" content="https://ajg91.github.io//blog/2025/08/23/linear-regression-with-scikit-learn.html">
+
+
+  <meta property="og:description" content="August 23, 2025  Last time, we went over projectile motion and how to code the equations up in Python. In this post, I will show how to apply linear regression in Python using Scikit-learn’s LinearRegression.  The example we will be working with is a standard two-dimensional kinematics problem. We will have data for only the first two-thirds of the path traveled and we will use linear regression to predict positions past what we have. I will exclusively work with PyTorch tensors and only convert to numpy arrays when needed.  We will be using the class sklearn.linear_model.LinearRegression. The following code applies the linear regression algorithm to our data using Scikit-learn:  def generate_rand_numbers(a, b, N):     return (b - a) * tc.rand(N) + a  a, b = t[0], t[-1] t_rand = generate_rand_numbers(a, b, t.shape[0]).reshape(-1, 1) x = pos_eq(x0, v0x, ax, t_rand, True) y = pos_eq(y0, v0y, ay, t_rand, True)  t_poly = tc.concat([t_rand, t_rand**2], dim=-1) t_poly_pred = tc.cat([t_pred, t_pred**2], dim=1)  model = LinearRegression() model.fit(t_rand, x) x_skl = np.squeeze(model.predict(t_rand)) x_skl_pred = np.squeeze(model.predict(t_pred))  model = LinearRegression() model.fit(t_poly, y) y_skl = np.squeeze(model.predict(t_poly)) y_skl_pred = np.squeeze(model.predict(t_poly_pred))   The process is as follows:    Generate random times within some interval give by the start and end time.   Calculate the position values of of random times for both $x$ and $y$.   Initialize the model.   Fit the model using the random times and their associated positions.   Use the model to predict the positions at new, unseen times.   One thing to note: For the $y$ position, we need to reshape the input variables $t_\text{rand}$ and $t_\text{pred}$ as shown by $t_\text{poly}$ and $t_\text{poly_pred}$. The reason is that the equations are not linear, but the class expects to perform a linear regression. The key here is that although the equations are not linear in $t$, they are in fact linear in the parameters that the model is trying to learn as shown below:  [y \approx w_1 x + w_2 x^2 + w_3 x^3 + b,]  where the parameters the model is trying to fit are $w_1$, $w_2$, $w_3$, and $b$.  Here are the results of the linear regression:    The following plot shows how the trajectory would look to a person watching the object being thrown.    The plot on the left shows the linear regression process for the $x$ position and the one on the right for the $y$ position. From the legend, we see that the true values that were used to pick the random times are given in yellow triangles, the true values for the times we are trying to predict are given by the brown line, the training values ($t_\text{rand}$) are given by the black x, the predicted position of the $t_\text{rand}$ values are given by blue dots, and the prediction for the new times are given by red dots. As can be seen, the model does a good job of predicting the positions for the times we do not have data for since the predictions match up with the truth.    The absolute errors are shown above. The overall mean square error (MSE) is on the order of $10^{-2}$, which in this case is good enough since we are dealing with meters. The reason as to why the MSE is not smaller is because of the noise we added to the data. In this case, the noise is the most dominant error, which prevents the model from achieving a more accurate prediction.  Next time, I will go over how to perform linear regression using PyTorch. Stay tuned!  ⬅ Back to Home">
+
+
+
+
+
+
+
+  <meta property="article:published_time" content="2025-08-23T00:00:00-07:00">
+
+
+
+
+
+
+<link rel="canonical" href="https://ajg91.github.io//blog/2025/08/23/linear-regression-with-scikit-learn.html">
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- end _includes/seo.html -->
+
+
+
+  <link href="/feed.xml" type="application/atom+xml" rel="alternate" title="AJG's Homepage Feed">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+  
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css"></noscript>
+
+
+
+    <script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$','$$'], ['\\[','\\]']]
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
+  </head>
+
+  <body class="layout--single" dir="ltr">
+    <nav class="skip-links">
+  <ul>
+    <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
+    <li><a href="#main" class="screen-reader-shortcut">Skip to content</a></li>
+    <li><a href="#footer" class="screen-reader-shortcut">Skip to footer</a></li>
+  </ul>
+</nav>
+
+    
+
+<div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        
+        <a class="site-title" href="/">
+          AJG&#39;s Homepage
+          
+        </a>
+        <ul class="visible-links"><li class="masthead__menu-item">
+              <a
+                href="/publications/"
+                
+                
+              >Publications</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/talks/"
+                
+                
+              >Talks</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/software/"
+                
+                
+              >Software</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/contact/"
+                
+                
+              >Contact Me</a>
+            </li></ul>
+        
+        <button class="greedy-nav__toggle hidden" type="button">
+          <span class="visually-hidden">Toggle menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+
+    <div class="initial-content">
+      
+
+
+
+
+
+<div id="main" role="main">
+  
+
+
+  <article class="page" itemscope itemtype="https://schema.org/CreativeWork">
+    <meta itemprop="headline" content="Linear regression: Applying Scikit-Learn to projectile motion example">
+    <meta itemprop="description" content="August 23, 2025Last time, we went over projectile motion and how to code the equations up in Python. In this post, I will show how to apply linear regression in Python using Scikit-learn’s LinearRegression.The example we will be working with is a standard two-dimensional kinematics problem. We will have data for only the first two-thirds of the path traveled and we will use linear regression to predict positions past what we have. I will exclusively work with PyTorch tensors and only convert to numpy arrays when needed.We will be using the class sklearn.linear_model.LinearRegression. The following code applies the linear regression algorithm to our data using Scikit-learn:def generate_rand_numbers(a, b, N):    return (b - a) * tc.rand(N) + aa, b = t[0], t[-1]t_rand = generate_rand_numbers(a, b, t.shape[0]).reshape(-1, 1)x = pos_eq(x0, v0x, ax, t_rand, True)y = pos_eq(y0, v0y, ay, t_rand, True)t_poly = tc.concat([t_rand, t_rand**2], dim=-1)t_poly_pred = tc.cat([t_pred, t_pred**2], dim=1)model = LinearRegression()model.fit(t_rand, x)x_skl = np.squeeze(model.predict(t_rand))x_skl_pred = np.squeeze(model.predict(t_pred))model = LinearRegression()model.fit(t_poly, y)y_skl = np.squeeze(model.predict(t_poly))y_skl_pred = np.squeeze(model.predict(t_poly_pred))The process is as follows:  Generate random times within some interval give by the start and end time.  Calculate the position values of of random times for both $x$ and $y$.  Initialize the model.  Fit the model using the random times and their associated positions.  Use the model to predict the positions at new, unseen times.One thing to note:For the $y$ position, we need to reshape the input variables $t_\text{rand}$ and $t_\text{pred}$ as shown by $t_\text{poly}$ and $t_\text{poly_pred}$. The reason is that the equations are not linear, but the class expects to perform a linear regression. The key here is that although the equations are not linear in $t$, they are in fact linear in the parameters that the model is trying to learn as shown below:[y \approx w_1 x + w_2 x^2 + w_3 x^3 + b,]where the parameters the model is trying to fit are $w_1$, $w_2$, $w_3$, and $b$.Here are the results of the linear regression:The following plot shows how the trajectory would look to a person watching the object being thrown.The plot on the left shows the linear regression process for the $x$ position and the one on the right for the $y$ position. From the legend, we see that the true values that were used to pick the random times are given in yellow triangles, the true values for the times we are trying to predict are given by the brown line, the training values ($t_\text{rand}$) are given by the black x, the predicted position of the $t_\text{rand}$ values are given by blue dots, and the prediction for the new times are given by red dots. As can be seen, the model does a good job of predicting the positions for the times we do not have data for since the predictions match up with the truth.The absolute errors are shown above. The overall mean square error (MSE) is on the order of $10^{-2}$, which in this case is good enough since we are dealing with meters. The reason as to why the MSE is not smaller is because of the noise we added to the data. In this case, the noise is the most dominant error, which prevents the model from achieving a more accurate prediction.Next time, I will go over how to perform linear regression using PyTorch. Stay tuned!⬅ Back to Home">
+    <meta itemprop="datePublished" content="2025-08-23T00:00:00-07:00">
+    
+
+    <div class="page__inner-wrap">
+      
+        <header>
+          <h1 id="page-title" class="page__title" itemprop="headline">
+            <a href="https://ajg91.github.io//blog/2025/08/23/linear-regression-with-scikit-learn.html" itemprop="url">Linear regression: Applying Scikit-Learn to projectile motion example
+</a>
+          </h1>
+          
+
+
+        </header>
+      
+
+      <section class="page__content" itemprop="text">
+        
+        <p class="post-date">August 23, 2025</p>
+
+<p>Last time, we went over projectile motion and how to code the equations up in Python. In this post, I will show how to apply linear regression in Python using Scikit-learn’s LinearRegression.</p>
+
+<p>The example we will be working with is a standard two-dimensional kinematics problem. We will have data for only the first two-thirds of the path traveled and we will use linear regression to predict positions past what we have. I will exclusively work with PyTorch tensors and only convert to numpy arrays when needed.</p>
+
+<p>We will be using the class <em>sklearn.linear_model.LinearRegression</em>. The following code applies the linear regression algorithm to our data using Scikit-learn:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">generate_rand_numbers</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">N</span><span class="p">):</span>
+    <span class="nf">return </span><span class="p">(</span><span class="n">b</span> <span class="o">-</span> <span class="n">a</span><span class="p">)</span> <span class="o">*</span> <span class="n">tc</span><span class="p">.</span><span class="nf">rand</span><span class="p">(</span><span class="n">N</span><span class="p">)</span> <span class="o">+</span> <span class="n">a</span>
+
+<span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="n">t</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">t</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">t_rand</span> <span class="o">=</span> <span class="nf">generate_rand_numbers</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">t</span><span class="p">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]).</span><span class="nf">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="nf">pos_eq</span><span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">v0x</span><span class="p">,</span> <span class="n">ax</span><span class="p">,</span> <span class="n">t_rand</span><span class="p">,</span> <span class="bp">True</span><span class="p">)</span>
+<span class="n">y</span> <span class="o">=</span> <span class="nf">pos_eq</span><span class="p">(</span><span class="n">y0</span><span class="p">,</span> <span class="n">v0y</span><span class="p">,</span> <span class="n">ay</span><span class="p">,</span> <span class="n">t_rand</span><span class="p">,</span> <span class="bp">True</span><span class="p">)</span>
+
+<span class="n">t_poly</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">concat</span><span class="p">([</span><span class="n">t_rand</span><span class="p">,</span> <span class="n">t_rand</span><span class="o">**</span><span class="mi">2</span><span class="p">],</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">t_poly_pred</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">cat</span><span class="p">([</span><span class="n">t_pred</span><span class="p">,</span> <span class="n">t_pred</span><span class="o">**</span><span class="mi">2</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="nc">LinearRegression</span><span class="p">()</span>
+<span class="n">model</span><span class="p">.</span><span class="nf">fit</span><span class="p">(</span><span class="n">t_rand</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+<span class="n">x_skl</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">squeeze</span><span class="p">(</span><span class="n">model</span><span class="p">.</span><span class="nf">predict</span><span class="p">(</span><span class="n">t_rand</span><span class="p">))</span>
+<span class="n">x_skl_pred</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">squeeze</span><span class="p">(</span><span class="n">model</span><span class="p">.</span><span class="nf">predict</span><span class="p">(</span><span class="n">t_pred</span><span class="p">))</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="nc">LinearRegression</span><span class="p">()</span>
+<span class="n">model</span><span class="p">.</span><span class="nf">fit</span><span class="p">(</span><span class="n">t_poly</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+<span class="n">y_skl</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">squeeze</span><span class="p">(</span><span class="n">model</span><span class="p">.</span><span class="nf">predict</span><span class="p">(</span><span class="n">t_poly</span><span class="p">))</span>
+<span class="n">y_skl_pred</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">squeeze</span><span class="p">(</span><span class="n">model</span><span class="p">.</span><span class="nf">predict</span><span class="p">(</span><span class="n">t_poly_pred</span><span class="p">))</span>
+</code></pre></div></div>
+
+<p>The process is as follows:</p>
+<ol>
+  <li>Generate random times within some interval give by the start and end time.</li>
+  <li>Calculate the position values of of random times for both $x$ and $y$.</li>
+  <li>Initialize the model.</li>
+  <li>Fit the model using the random times and their associated positions.</li>
+  <li>Use the model to predict the positions at new, unseen times.</li>
+</ol>
+
+<p>One thing to note:<br />
+For the $y$ position, we need to reshape the input variables $t_\text{rand}$ and $t_\text{pred}$ as shown by $t_\text{poly}$ and $t_\text{poly_pred}$. The reason is that the equations are not linear, but the class expects to perform a linear regression. The key here is that although the equations are not linear in $t$, they are in fact linear in the parameters that the model is trying to learn as shown below:</p>
+
+\[y \approx w_1 x + w_2 x^2 + w_3 x^3 + b,\]
+
+<p>where the parameters the model is trying to fit are $w_1$, $w_2$, $w_3$, and $b$.</p>
+
+<p>Here are the results of the linear regression:</p>
+
+<p><img src="/assets/images/linear_regression/linear_reg_skl.png" alt="lr_skl" /></p>
+
+<p>The following plot shows how the trajectory would look to a person watching the object being thrown.</p>
+
+<p><img src="/assets/images/linear_regression/linear_reg_skl_y_vs_x.png" alt="lr_skl_y_vs_x" /></p>
+
+<p>The plot on the left shows the linear regression process for the $x$ position and the one on the right for the $y$ position. From the legend, we see that the true values that were used to pick the random times are given in yellow triangles, the true values for the times we are trying to predict are given by the brown line, the training values ($t_\text{rand}$) are given by the black x, the predicted position of the $t_\text{rand}$ values are given by blue dots, and the prediction for the new times are given by red dots. As can be seen, the model does a good job of predicting the positions for the times we do not have data for since the predictions match up with the truth.</p>
+
+<p><img src="/assets/images/linear_regression/linear_reg_abs_err_skl.png" alt="lr_skl_abs_err" /></p>
+
+<p>The absolute errors are shown above. The overall mean square error (MSE) is on the order of $10^{-2}$, which in this case is good enough since we are dealing with meters. The reason as to why the MSE is not smaller is because of the noise we added to the data. In this case, the noise is the most dominant error, which prevents the model from achieving a more accurate prediction.</p>
+
+<p>Next time, I will go over how to perform linear regression using PyTorch. Stay tuned!</p>
+
+<p><a href="/" class="btn">⬅ Back to Home</a></p>
+
+        
+      </section>
+
+      <footer class="page__meta">
+        
+        
+
+
+        
+
+  <p class="page__date"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Updated:</strong> <time class="dt-published" datetime="2025-08-23T00:00:00-07:00">August 23, 2025</time></p>
+
+      </footer>
+
+      
+
+      
+  <nav class="pagination">
+    
+      <a href="/blog/2025/08/16/projectile-motion.html" class="pagination--pager" title="Linear regression: A review of projectile motion">Previous</a>
+    
+    
+      <a href="#" class="pagination--pager disabled">Next</a>
+    
+  </nav>
+
+
+    </div>
+
+    
+  </article>
+
+  
+  
+</div>
+
+      
+    </div>
+
+    
+
+    <div id="footer" class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        
+
+<div class="page__footer-follow">
+  <ul class="social-icons">
+    
+
+    
+
+    
+      <li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+    
+  </ul>
+</div>
+
+
+<div class="page__footer-copyright">&copy; 2025 <a href="https://ajg91.github.io/">AJG&#39;s Homepage</a>. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/jekyll-themes/minimal-mistakes/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+
+  </body>
+</html>
