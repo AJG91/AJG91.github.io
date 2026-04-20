@@ -1,0 +1,770 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.27.3 by Michael Rose
+  Copyright 2013-2025 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE
+-->
+
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin _includes/seo.html --><title>Convolutional neural networks: MNIST dataset with machine learning pipeline - AJG’s Homepage</title>
+<meta name="description" content="September 14, 2025  Last week we went over how to construct a convolutional neural network (CNN) and applied the model to the MNIST dataset. This week I will show you how to modify the code to create a machine learning pipeline and well-documented. As before, here is the documentation for the function that we will be using to load the MNIST dataset.  The process of refactoring and creating a pipeline is important because, if done correctly, it can save time and reduce errors. A code pipeline creates an automated and efficient system. By standardizing the workflow, the amount of errors will be reduced and, if there is an error, it will be easier to pinpoint and fix. It also makes starting future projects easier by allowing the use of the different components of the pipeline along different projects, thus speeding up the coding process and not reinventing the wheel. Another key feature of creating code pipelines is that it makes it simple to try different algorithms, hyperparameters, or preprocessing steps by keeping the workflow consistent.  The importance of documenting your code is something that cannot be stressed enough. Oftentimes, one finds that they come back to different pieces of code that they wrote a few months and have to take time to figure out what they did, which can be time consuming. The lack of documentation can be even more stressful when working with other people’s code that isn’t documented. Today I will show you how I document my code. I will also show a cool way to store parameters. I will be using the same CNN, same dataset, and same random seed to make sure that our changes do not affect the output.  First, let’s look at how to store parameters. I will present one way, but there are many different ways. In my case, I use the function SimpleNamespace and a yaml file.  Here’s the yaml file I am using in this particular case:  path: &#39;../outputs/&#39; seed: 42  split_size: 0.1 batch_size: 64 learning_rate: 0.001 epochs: 3  input_size: 1 output_size: 10 hidden_size: 128   The first thing we see is the path where we will be outputting the plots to. We also have the seed to seed all random number generators. The next batch are parameters used for splitting the dataset, the learning rate for the optimizer, and the number of times we will train the model. The last batch of parameters indicate the different sizes that we need to build our CNN.  from types import SimpleNamespace  dpi = 400 dataset = &#39;mnist&#39;  config = load_config(path=f&#39;../config_{dataset}.yaml&#39;) cfg = SimpleNamespace(**config) print(json.dumps(vars(cfg), indent=2))  set_seed(cfg.seed) device = &quot;cuda&quot; if tc.cuda.is_available() else &quot;cpu&quot;   We load the yaml file into the variable config as a dictionary. This variable is then passed into the function SimpleNamespace. The double asterisk unpacks the key-value pairs as keyword arguments into the variable cfg, allowing us to call the parameters as attributes of cfg. This is pretty neat! Now all the parameters are stored in one place. All you have to do is call them from cfg as is shown in the function call set_seed(cfg.seed). We also specify the device that will be used, writing the code in such a way so that CUDA is the desired choice if available.  Next, we initialize the model, optimizer, loss function, and get our train, validation, and test dataloaders.  cnn = SimpleCNN(cfg.input_size, cfg.output_size, cfg.hidden_size).to(device) optimizer = optim.AdamW(cnn.parameters(), lr=cfg.learning_rate) loss_fn = nn.CrossEntropyLoss()  train, val, test = get_dataloaders(dataset, cfg.split_size, cfg.batch_size, cfg.seed)   Overall, this should be self-explanatory since it’s the same process as shown in last week’s post, but now we have a function for getting the dataloaders. Let’s look at this function closely. I will use this function and the subsequent classes used in get_dataloaders to explain creating a machine learning pipeline and documenting the code. I won’t go over every detail, but will focus on what I feel is important to understand. I will start out by showing each individual component of get_dataloaders, then show the full function at the end. For subsequent classes, I will only show the relevant subset of the class. Let’s get started:  def get_dataloaders(     dataset: str,     split_size: float = 0.1,     batch_size: int = 64,     seed: int = 42,     **kwargs ) -&gt; Tuple[DataLoader, DataLoader, DataLoader]:   First, let’s look at the header. If you contrast the inputs with my previous codes, you see that I now show the data types of the inputs. This is called type hinting. It allows one to quickly understand what kind of inputs the function expects. For example, I can have a function header such as  def add(x, a, b):   While we can probably guess that we are adding numbers, what if the function looked like the following:  def add(x, a, b):     return x[a] + x[b]   if we would have passed floats into a and b, it would have resulted in an error. Imagine instead we wrote:  def add(x: numpy.ndarray, a: int, b: int) -&gt; float:     return x[a] + x[b]   Now we know that x is a numpy array, a is an integer, b is an integer, and the resulting output is a floating point. While we may still need to look at the documentation to get more information on the function, at least we wouldn’t have made the initial error of passing in floats.  Looking back at the get_dataloaders function, we see that dataset is a string. If there was no type hinting we might have thought it was the actual dataset that was being passed into the function. We can also see that split_size is a float and has a default value, and batch_size and seed are integers with default values, as well. The expected output of the function is also shown and is a tuple composed of three dataloaders. At a glance, we immediately have more information about the function compared to if it did not have type hinting.  From here, we look at the docstring, which is the documentation:  &quot;&quot;&quot; Create PyTorch DataLoaders for training, validation, and test sets.  Parameters ---------- dataset : str     Name of the dataset to load. split_size : float, optional (default=0.1)     The fraction of data that will be split off for the validation/test set. batch_size : int, optional (default=64)     Number of samples per batch. seed : int, optional (default=42)     Random seed for reproducible splitting of the dataset. **kwargs     Additional keyword arguments.  Returns ------- train_loader : DataLoader     DataLoader for the training set, with shuffling enabled. val_loader : DataLoader     DataLoader for the validation set, without shuffling. test_loader : DataLoader     DataLoader for the test set, without shuffling. &quot;&quot;&quot;   Basic documentation is broken down into three parts: description, inputs, and outputs. One can get more sophisticated with the docstring if one wishes, but let’s keep it basic for now. The description of this function is short and to the point. The function creates PyTorch DataLoaders for training, validation, and test sets. The input section is given by “Parameters” and shows the data type and gives a short description of each input variable and whether or not they have a default value (find optional in docstring). Here, I don’t have arrays (or tensors), but if one does it is always good to include the expected shape of the array in the short description. The final section is given by “Returns” and displays the outputs of the function with the data type and short description of each output variable just like with the inputs.  At this point we know exactly what the function does, the different data types involved, and the inputs and outputs of the function. Now, all that’s left is the code itself so that we can capture all the details of the function.  data = PreprocessDataset(dataset, split_size, rand_seed=seed, **kwargs) return (     DataLoader(TensorDataset(data.X_train, data.y_train), batch_size=batch_size, shuffle=True),     DataLoader(TensorDataset(data.X_val, data.y_val), batch_size=batch_size),     DataLoader(TensorDataset(data.X_test, data.y_test), batch_size=batch_size) )   Here, we see that we call PreprocessDataset with the dataset, which returns an object data with the training, validation, and test data as attributes. These attributes are then passed into TensorDataset and DataLoader like in my previous post. The order of the dataloaders in the output tuple are (train, validation, test). Combining the header, docstring, and code gives us the full function:  def get_dataloaders(     dataset: str,     split_size: float = 0.1,     batch_size: int = 64,     seed: int = 42,     **kwargs ) -&gt; Tuple[DataLoader, DataLoader, DataLoader]:     &quot;&quot;&quot;     Create PyTorch DataLoaders for training, validation, and test sets.      Parameters     ----------     dataset : str         Name of the dataset to load.     split_size : float, optional (default=0.1)         The fraction of data that will be split off for the validation/test set.     batch_size : int, optional (default=64)         Number of samples per batch.     seed : int, optional (default=42)         Random seed for reproducible splitting of the dataset.     **kwargs         Additional keyword arguments.      Returns     -------     train_loader : DataLoader         DataLoader for the training set, with shuffling enabled.     val_loader : DataLoader         DataLoader for the validation set, without shuffling.     test_loader : DataLoader         DataLoader for the test set, without shuffling.     &quot;&quot;&quot;     data = PreprocessDataset(dataset, split_size, rand_seed=seed, **kwargs)     return (         DataLoader(TensorDataset(data.X_train, data.y_train), batch_size=batch_size, shuffle=True),         DataLoader(TensorDataset(data.X_val, data.y_val), batch_size=batch_size),         DataLoader(TensorDataset(data.X_test, data.y_test), batch_size=batch_size)     )   It’s definitely more verbose than if I just included the code portion, but there is now so much information embedded in it that will be useful when it comes time to use this function!  Let’s now take a look at a subset of the class PreprocessDataset:  class PreprocessDataset(Dataset):     &quot;&quot;&quot;     Preprocess a dataset and provide train, validation, and test splits as PyTorch tensors.      Attributes     ----------     X_train : tc.Tensor         Training input features.     y_train : tc.Tensor         Training labels.     X_val : tc.Tensor         Validation input features.     y_val : tc.Tensor         Validation labels.     X_test : tc.Tensor         Test input features.     y_test : tc.Tensor         Test labels.      Parameters     ----------     dataset : str         Name of the dataset to load.         Options: &#39;MNIST&#39;, &#39;MEDMNIST&#39;     split_size : float, optional (default=0.1)         The fraction of data that will be split off for the validation/test set.     rand_seed : int, optional (default=42)         Random seed for reproducible splitting.     **kwargs         Additional keyword arguments.     &quot;&quot;&quot;     def __init__(         self,          dataset: str,          split_size: float = 0.1,          rand_seed: int = 42,          **kwargs     ):         loader = LoadDatasets(dataset, **kwargs)         X, y = loader.X / 255.0, loader.y                  X_train, X_val, y_train, y_val = self._split_dataset(X, y, split_size, rand_seed)         X_train, X_test, y_train, y_test = self._split_dataset(X_train, y_train, split_size, rand_seed)          self.X_train, self.y_train = X_train, y_train         self.X_val, self.y_val = X_val, y_val         self.X_test, self.y_test = X_test, y_test      def _split_dataset(         self,          X: tc.Tensor,          y: tc.Tensor,          split_size: float,          rand_seed: int     ) -&gt; Tuple[tc.Tensor, tc.Tensor, tc.Tensor, tc.Tensor]:         &quot;&quot;&quot;         Split the dataset into train/test or train/validation subsets.          Parameters         ----------         X : tc.Tensor             Input features.         y : tc.Tensor             Target labels.         split_size : float             The fraction of data that will be split off for the validation/test set.         rand_seed : int             Random seed for reproducibility.          Returns         -------         X_train : tc.Tensor             Features of the first split.         X_test : tc.Tensor             Features of the second split.         y_train : tc.Tensor             Labels of the first split.         y_test : tc.Tensor             Labels of the second split.         &quot;&quot;&quot;         return train_test_split(X, y, test_size=split_size, random_state=rand_seed)   The main docstring for a class documents the constructor. Then, each individual function has it’s own docstring. Looking at the constructor docstring, you will see that we have now included “Attributes”. These are instance attributes that belong to the class objects. This essentially means you can do things like:  data = PreprocessDataset(&#39;mnist&#39;) X_train, y_train = data.X_train, data.y_train   where data is the object and X_train and y_train are the attributes. In the case of this class, we have six instance attributes, which are our data sets. The docstring for these attributes is written in the same way as “Parameters” and “Returns”*. Note that the docstring says that the variable datasets can either be ‘MNIST’ or ‘MEDMNIST’. More about this later. One can also choose to give a brief summary for each method in the class in the constructor docstring, but I will not be doing this.  In the constructor, we instance an object loader from the LoadDatasets class (which we will see in a bit). The instance attributes tied to the loader object are the x and y datasets. We then use these and call the method _split_dataset, which will now give us our train, validation, and test sets. The underscore in the method name indicates that this is meant to be an internal method that should not be accessed from outside the class. Python does not enforce this so it can still be called from outside the class if you so wish, but if you find yourself purposely writing underscores to call methods outside of the class constructor or other methods you may want to rethink your coding pipeline. For the last part of the constructor, we turn the different data sets into instance attributes. This is easily done by writing self.X_train = X_train for all variables you want to save.  At this point you may be thinking to yourself, “This is so complicated!! Why are we doing all this if our previous code, without functions and classes, worked just fine?” As Yoda would say, “patience you must have, my young Padawan.” Let’s look at the last class, LoadDatasets and hopefully everything becomes clear.  class LoadDatasets():     &quot;&quot;&quot;     Load and return datasets as PyTorch tensors.      Attributes     ----------     dataset : str         Name of the dataset to load (e.g., &#39;MNIST&#39;, &#39;MEDMNIST&#39;).     X : tc.Tensor         Input features of the dataset as a PyTorch tensor.         shape: (num_samples, channels, height, width)     y : tc.Tensor         Target labels as a PyTorch tensor.      Parameters     ----------     dataset : str         The name of the dataset to load.         Options: &#39;MNIST&#39; or &#39;MEDMNIST&#39;     **kwargs         Additional keyword arguments passed to the specific dataset loader methods.      Raises     ------     ValueError         If an unsupported dataset name is provided.     &quot;&quot;&quot;     def __init__(self, dataset: str, **kwargs):         self.dataset = dataset.upper()         self.loaders = {             &#39;MNIST&#39;: lambda: self.load_mnist(**kwargs),             &#39;MEDMNIST&#39;: lambda: self.load_medmnist(**kwargs),         }          if self.dataset not in self.loaders:             raise ValueError(f&#39;Dataset not supported -&gt; {dataset}. &#39;                              f&#39;Available: {list(self.loaders.keys())}&#39;)          self.X, self.y = self.loaders[self.dataset]()              def load_mnist(self, version: int = 1) -&gt; Tuple[tc.Tensor, tc.Tensor]:         &quot;&quot;&quot;         Load the MNIST dataset and convert it to PyTorch tensors.          Parameters         ----------         version : int, optional (default=1)             The version of the MNIST dataset from OpenML.          Returns         -------         X : tc.Tensor             MNIST images as a float32 tensor normalized to [0, 1].             Shape: (num_samples, 1, 28, 28)         y : tc.Tensor             MNIST labels as int64 tensor.             Shape: (num_samples,)         &quot;&quot;&quot;         from sklearn.datasets import fetch_openml                  X, y = fetch_openml(&#39;mnist_784&#39;, version=version, return_X_y=True, as_frame=False)         X = tc.tensor(X, dtype=tc.float32)         y = tc.from_numpy(y.astype(&#39;int64&#39;))         return X.view(-1, 1, 28, 28), y              def load_medmnist(self, flag: str = &#39;bloodmnist&#39;) -&gt; Tuple[tc.Tensor, tc.Tensor]:         &quot;&quot;&quot;         Load a MedMNIST dataset and convert it to PyTorch tensors.          Parameters         ----------         flag : str, optional (default=&#39;bloodmnist&#39;)             Specifies which MedMNIST dataset to load.             Must be one of the keys in `medmnist.INFO`.          Returns         -------         X : tc.Tensor             MedMNIST images as a float32 tensor normalized to [0, 1].             Shape: (num_samples, channels, height, width)         y : tc.Tensor             MedMNIST labels as long tensors.             Shape: (num_samples,)          Raises         ------         ValueError             If the specified `flag` does not correspond to a valid MedMNIST dataset.         &quot;&quot;&quot;         import medmnist         from medmnist import INFO                  if flag not in INFO:             raise ValueError(f&#39;Invalid MedMNIST flag -&gt; {flag}. &#39;                              f&#39;Available datasets: {list(INFO.keys())}&quot;&#39;)          print(INFO[flag][&#39;label&#39;])         DataClass = getattr(medmnist, INFO[flag][&#39;python_class&#39;])                  train_ds = DataClass(split=&#39;train&#39;, download=True)         val_ds = DataClass(split=&#39;val&#39;, download=True)         test_ds = DataClass(split=&#39;test&#39;, download=True)                  X = np.concatenate([train_ds.imgs, val_ds.imgs, test_ds.imgs], axis=0)         y = np.concatenate([train_ds.labels, val_ds.labels, test_ds.labels], axis=0)                  X = tc.tensor(X, dtype=tc.float32)         y = tc.tensor(y).long().squeeze()         return X.permute(0, 3, 1, 2), y   In the docstring for this class I have included yet another section, “Raises”. By seeing this we know that somewhere in the constructor there will be a piece of code that will potentially raise an error if something is wrong. The docstring says that this will happen if an unsupported dataset name is provided. Aha! So If I pass in an incorrect string or a string that does not match a known dataset in the class an error will be raised.  Looking at the constructor, we see that the dataset string is capitalized. This is to prevent case sensitivity raising an error. The dataset name is passed into a dictionary that calls the method that corresponds to the dataset being asked for. We also see that the methods are called via lambda function. The reason is so that if we have parameters that we need to pass into the dataset methods we can do it as a keyword argument (a.k.a. kwargs). For example, take MEDMNIST, which is a library of medical datasets. An input to the method is the specific MEDMNIST dataset that we want. In this case, the default option is “bloodmnist”. If instead we wanted ChestMNIST, then we pass in “chestmnist” as a keyword argument into get_dataloaders. If no keyword arguments are passed in, then the lambda function is treated as if it was a regular method call.  So let’s review the function and classes used for obtaining the dataloaders. The get_dataloaders function calls the PreprocessDataset class. This class is solely used for grabbing the already loaded features and targets, normalizing, and splitting them into train, validation, and test sets. The PreprocessDataset class calls the LoadDatasets class, which is solely used for loading the features and targets from their respective Python package. The classes do not care about the inner workings of each other. PreprocessDataset only cares that there is a class with the feature and target variables as attributes. On the other hand, LoadDatasets can be called independently from everything else if one only wants the feature and target variables. This way of modularizing code helps once projects start getting big and pipelines get complicated. It keeps everything in such a way so that you can swap out functions or classes with ease. You don’t have everything tangled up together, which can result in headaches when making changes.  Another cool thing is that adding datasets to LoadDatasets is a breeze. All you have to do is write a function in the class that outputs the feature and target variables with the shape $\text{X.shape} = (\text{num_samples}, \text{channels}, \text{height}, \text{width})$ and $\text{y.shape} = (\text{num_samples},)$ and add the dataset to the dictionary in the constructor. From there, getting the dataloaders for this new dataset is as easy as calling get_dataloaders and passing in the appropriate name. You don’t have to copy over you preprocessing pipeline or the train_test_split function.  I won’t go over the functions train_model and evaluate_model since they are pretty self-explanatory and the bulk of it was covered last week. What I do want to show are the train, validation, and test results:  Epoch 1, Train Accuracy: 0.88814815, Validation Accuracy: 0.94385714 Epoch 2, Train Accuracy: 0.95839506, Validation Accuracy: 0.96385714 Epoch 3, Train Accuracy: 0.97007055, Validation Accuracy: 0.96928571 Test Accuracy: 0.97190476   We note that they are the same as last week! This means that our code refactoring did not fundamentally change anything in the model, which is great validation that we did not introduce a bug into the code. The misclassified images are also the same:    which is to be expected since we are seeding all the random number generators. All is well. The cool thing is that all the training and evaluation code is agnostic to the dataset, which means that you can use it on other datasets with very minimal tweaks!  The functions used to produce the plots are also written in such a way as to allow flexibility when using different datasets. I will only go over one of the functions:  def plot_images(     loader: tc.utils.data.DataLoader,      path: str,      dpi: int,      data: str,     size: list = [2, 5],      figsize: Tuple = (14, 6),     cmap: str = None ) -&gt; None:     &quot;&quot;&quot;     Plots a subset of the dataset images.      Parameters     ----------     loader : tc.utils.data.DataLoader         DataLoader for the training set.     path : str         String to the directory where the plot is saved.     dpi : int         Dots per inch.         A higher dpi results in a sharper image.     data : str         The name of the dataset being plotted.         This is used to label the plot when saving to directory.     size : list, optional (default=[2, 5])         Specifies the number of rows and columns.     figsize : Tuple, optional (default=[14, 6])         Specifies the figure size.     cmap : str, optional (default=None)         Colormap for 2D images.     &quot;&quot;&quot;     images, labels = next(iter(loader))      fig, axes = plt.subplots(size[0], size[1], figsize=figsize)     for i, ax in enumerate(axes.flat):         img = images[i].permute(1, 2, 0)         if img.shape[-1] == 1:             img = img.squeeze()             cmap = &#39;gray&#39;                      ax.imshow(img, cmap=cmap)         ax.set_title(f&quot;Label: {labels[i].item()}&quot;, fontsize=16)         ax.axis(&#39;off&#39;)     plt.show();          fig.set_constrained_layout_pads(w_pad=0.01, h_pad=0.01)     fig.savefig(path + f&#39;example_image_{data}.png&#39;, bbox_inches=&#39;tight&#39;, dpi=dpi)   I won’t belabor the type hinting and docstring, but I do want to point out something we didn’t seen in the previous examples, which is loader: tc.utils.data.DataLoader. This way of type hinting happens when the object being passed into the function is not some straighforward data type like an integer or float. In this case, you can simply write what one would write if they want to import that object. Here, I have already imported torch as tc so I simply need to complete the path to import DataLoader and use that as the type hint.  Let’s jump to the code portion since we have pretty much already discussed type hinting and docstrings. The function is written in such a way as to allow someone to pass in grayscale or color images. This can be seen from the following line: if img.shape[-1] == 1:. This if-statement checks if the image is grayscale, and, if so, it squeezes the single channel input portion so that a 2D image can be plotted. If the last element size is not $1$, there is no squeezing and the plots are shown in color with the $3$ input channels. The final line saves the plot to a folder and appropriately labels it based on the data that was passed in.  Summary: So we’ve gone over quite a bit in this blog post. We first discussed how to save parameters in a yaml file, how to import them into the workspace, and how to turn them into attributes of an object. We went over type hinting and writing docstrings for functions and classes, as well as implementing a machine learning pipeline for easier project deployment. To be sure we did not introduce any errors in the code, we ran the same example as in the previous week and got the same outputs, which means our refactoring did not introduce any bugs. Overall, we’ve managed to take a specific problem and create a pipeline that can then be applied to a wide variety of datasets.  The code presented and plots displayed in the Convolutional neural network with the MNIST dataset posts can be found on my Github under the build-cnn repo [1]. Feel free to reach out if you have any questions about what we covered this week. I will take a break the next few weeks and come back with hyperparameter tuning and model debugging. Stay tuned!  [1] Alberto J. Garcia, Build CNN, 2025. Available at: https://github.com/AJG91/build-cnn. ⬅ Back to Home">
+
+
+
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="AJG&#39;s Homepage">
+<meta property="og:title" content="Convolutional neural networks: MNIST dataset with machine learning pipeline">
+<meta property="og:url" content="https://ajg91.github.io//posts/machine-learning/convolutional-neural-network-with-mnist-pipeline/">
+
+
+  <meta property="og:description" content="September 14, 2025  Last week we went over how to construct a convolutional neural network (CNN) and applied the model to the MNIST dataset. This week I will show you how to modify the code to create a machine learning pipeline and well-documented. As before, here is the documentation for the function that we will be using to load the MNIST dataset.  The process of refactoring and creating a pipeline is important because, if done correctly, it can save time and reduce errors. A code pipeline creates an automated and efficient system. By standardizing the workflow, the amount of errors will be reduced and, if there is an error, it will be easier to pinpoint and fix. It also makes starting future projects easier by allowing the use of the different components of the pipeline along different projects, thus speeding up the coding process and not reinventing the wheel. Another key feature of creating code pipelines is that it makes it simple to try different algorithms, hyperparameters, or preprocessing steps by keeping the workflow consistent.  The importance of documenting your code is something that cannot be stressed enough. Oftentimes, one finds that they come back to different pieces of code that they wrote a few months and have to take time to figure out what they did, which can be time consuming. The lack of documentation can be even more stressful when working with other people’s code that isn’t documented. Today I will show you how I document my code. I will also show a cool way to store parameters. I will be using the same CNN, same dataset, and same random seed to make sure that our changes do not affect the output.  First, let’s look at how to store parameters. I will present one way, but there are many different ways. In my case, I use the function SimpleNamespace and a yaml file.  Here’s the yaml file I am using in this particular case:  path: &#39;../outputs/&#39; seed: 42  split_size: 0.1 batch_size: 64 learning_rate: 0.001 epochs: 3  input_size: 1 output_size: 10 hidden_size: 128   The first thing we see is the path where we will be outputting the plots to. We also have the seed to seed all random number generators. The next batch are parameters used for splitting the dataset, the learning rate for the optimizer, and the number of times we will train the model. The last batch of parameters indicate the different sizes that we need to build our CNN.  from types import SimpleNamespace  dpi = 400 dataset = &#39;mnist&#39;  config = load_config(path=f&#39;../config_{dataset}.yaml&#39;) cfg = SimpleNamespace(**config) print(json.dumps(vars(cfg), indent=2))  set_seed(cfg.seed) device = &quot;cuda&quot; if tc.cuda.is_available() else &quot;cpu&quot;   We load the yaml file into the variable config as a dictionary. This variable is then passed into the function SimpleNamespace. The double asterisk unpacks the key-value pairs as keyword arguments into the variable cfg, allowing us to call the parameters as attributes of cfg. This is pretty neat! Now all the parameters are stored in one place. All you have to do is call them from cfg as is shown in the function call set_seed(cfg.seed). We also specify the device that will be used, writing the code in such a way so that CUDA is the desired choice if available.  Next, we initialize the model, optimizer, loss function, and get our train, validation, and test dataloaders.  cnn = SimpleCNN(cfg.input_size, cfg.output_size, cfg.hidden_size).to(device) optimizer = optim.AdamW(cnn.parameters(), lr=cfg.learning_rate) loss_fn = nn.CrossEntropyLoss()  train, val, test = get_dataloaders(dataset, cfg.split_size, cfg.batch_size, cfg.seed)   Overall, this should be self-explanatory since it’s the same process as shown in last week’s post, but now we have a function for getting the dataloaders. Let’s look at this function closely. I will use this function and the subsequent classes used in get_dataloaders to explain creating a machine learning pipeline and documenting the code. I won’t go over every detail, but will focus on what I feel is important to understand. I will start out by showing each individual component of get_dataloaders, then show the full function at the end. For subsequent classes, I will only show the relevant subset of the class. Let’s get started:  def get_dataloaders(     dataset: str,     split_size: float = 0.1,     batch_size: int = 64,     seed: int = 42,     **kwargs ) -&gt; Tuple[DataLoader, DataLoader, DataLoader]:   First, let’s look at the header. If you contrast the inputs with my previous codes, you see that I now show the data types of the inputs. This is called type hinting. It allows one to quickly understand what kind of inputs the function expects. For example, I can have a function header such as  def add(x, a, b):   While we can probably guess that we are adding numbers, what if the function looked like the following:  def add(x, a, b):     return x[a] + x[b]   if we would have passed floats into a and b, it would have resulted in an error. Imagine instead we wrote:  def add(x: numpy.ndarray, a: int, b: int) -&gt; float:     return x[a] + x[b]   Now we know that x is a numpy array, a is an integer, b is an integer, and the resulting output is a floating point. While we may still need to look at the documentation to get more information on the function, at least we wouldn’t have made the initial error of passing in floats.  Looking back at the get_dataloaders function, we see that dataset is a string. If there was no type hinting we might have thought it was the actual dataset that was being passed into the function. We can also see that split_size is a float and has a default value, and batch_size and seed are integers with default values, as well. The expected output of the function is also shown and is a tuple composed of three dataloaders. At a glance, we immediately have more information about the function compared to if it did not have type hinting.  From here, we look at the docstring, which is the documentation:  &quot;&quot;&quot; Create PyTorch DataLoaders for training, validation, and test sets.  Parameters ---------- dataset : str     Name of the dataset to load. split_size : float, optional (default=0.1)     The fraction of data that will be split off for the validation/test set. batch_size : int, optional (default=64)     Number of samples per batch. seed : int, optional (default=42)     Random seed for reproducible splitting of the dataset. **kwargs     Additional keyword arguments.  Returns ------- train_loader : DataLoader     DataLoader for the training set, with shuffling enabled. val_loader : DataLoader     DataLoader for the validation set, without shuffling. test_loader : DataLoader     DataLoader for the test set, without shuffling. &quot;&quot;&quot;   Basic documentation is broken down into three parts: description, inputs, and outputs. One can get more sophisticated with the docstring if one wishes, but let’s keep it basic for now. The description of this function is short and to the point. The function creates PyTorch DataLoaders for training, validation, and test sets. The input section is given by “Parameters” and shows the data type and gives a short description of each input variable and whether or not they have a default value (find optional in docstring). Here, I don’t have arrays (or tensors), but if one does it is always good to include the expected shape of the array in the short description. The final section is given by “Returns” and displays the outputs of the function with the data type and short description of each output variable just like with the inputs.  At this point we know exactly what the function does, the different data types involved, and the inputs and outputs of the function. Now, all that’s left is the code itself so that we can capture all the details of the function.  data = PreprocessDataset(dataset, split_size, rand_seed=seed, **kwargs) return (     DataLoader(TensorDataset(data.X_train, data.y_train), batch_size=batch_size, shuffle=True),     DataLoader(TensorDataset(data.X_val, data.y_val), batch_size=batch_size),     DataLoader(TensorDataset(data.X_test, data.y_test), batch_size=batch_size) )   Here, we see that we call PreprocessDataset with the dataset, which returns an object data with the training, validation, and test data as attributes. These attributes are then passed into TensorDataset and DataLoader like in my previous post. The order of the dataloaders in the output tuple are (train, validation, test). Combining the header, docstring, and code gives us the full function:  def get_dataloaders(     dataset: str,     split_size: float = 0.1,     batch_size: int = 64,     seed: int = 42,     **kwargs ) -&gt; Tuple[DataLoader, DataLoader, DataLoader]:     &quot;&quot;&quot;     Create PyTorch DataLoaders for training, validation, and test sets.      Parameters     ----------     dataset : str         Name of the dataset to load.     split_size : float, optional (default=0.1)         The fraction of data that will be split off for the validation/test set.     batch_size : int, optional (default=64)         Number of samples per batch.     seed : int, optional (default=42)         Random seed for reproducible splitting of the dataset.     **kwargs         Additional keyword arguments.      Returns     -------     train_loader : DataLoader         DataLoader for the training set, with shuffling enabled.     val_loader : DataLoader         DataLoader for the validation set, without shuffling.     test_loader : DataLoader         DataLoader for the test set, without shuffling.     &quot;&quot;&quot;     data = PreprocessDataset(dataset, split_size, rand_seed=seed, **kwargs)     return (         DataLoader(TensorDataset(data.X_train, data.y_train), batch_size=batch_size, shuffle=True),         DataLoader(TensorDataset(data.X_val, data.y_val), batch_size=batch_size),         DataLoader(TensorDataset(data.X_test, data.y_test), batch_size=batch_size)     )   It’s definitely more verbose than if I just included the code portion, but there is now so much information embedded in it that will be useful when it comes time to use this function!  Let’s now take a look at a subset of the class PreprocessDataset:  class PreprocessDataset(Dataset):     &quot;&quot;&quot;     Preprocess a dataset and provide train, validation, and test splits as PyTorch tensors.      Attributes     ----------     X_train : tc.Tensor         Training input features.     y_train : tc.Tensor         Training labels.     X_val : tc.Tensor         Validation input features.     y_val : tc.Tensor         Validation labels.     X_test : tc.Tensor         Test input features.     y_test : tc.Tensor         Test labels.      Parameters     ----------     dataset : str         Name of the dataset to load.         Options: &#39;MNIST&#39;, &#39;MEDMNIST&#39;     split_size : float, optional (default=0.1)         The fraction of data that will be split off for the validation/test set.     rand_seed : int, optional (default=42)         Random seed for reproducible splitting.     **kwargs         Additional keyword arguments.     &quot;&quot;&quot;     def __init__(         self,          dataset: str,          split_size: float = 0.1,          rand_seed: int = 42,          **kwargs     ):         loader = LoadDatasets(dataset, **kwargs)         X, y = loader.X / 255.0, loader.y                  X_train, X_val, y_train, y_val = self._split_dataset(X, y, split_size, rand_seed)         X_train, X_test, y_train, y_test = self._split_dataset(X_train, y_train, split_size, rand_seed)          self.X_train, self.y_train = X_train, y_train         self.X_val, self.y_val = X_val, y_val         self.X_test, self.y_test = X_test, y_test      def _split_dataset(         self,          X: tc.Tensor,          y: tc.Tensor,          split_size: float,          rand_seed: int     ) -&gt; Tuple[tc.Tensor, tc.Tensor, tc.Tensor, tc.Tensor]:         &quot;&quot;&quot;         Split the dataset into train/test or train/validation subsets.          Parameters         ----------         X : tc.Tensor             Input features.         y : tc.Tensor             Target labels.         split_size : float             The fraction of data that will be split off for the validation/test set.         rand_seed : int             Random seed for reproducibility.          Returns         -------         X_train : tc.Tensor             Features of the first split.         X_test : tc.Tensor             Features of the second split.         y_train : tc.Tensor             Labels of the first split.         y_test : tc.Tensor             Labels of the second split.         &quot;&quot;&quot;         return train_test_split(X, y, test_size=split_size, random_state=rand_seed)   The main docstring for a class documents the constructor. Then, each individual function has it’s own docstring. Looking at the constructor docstring, you will see that we have now included “Attributes”. These are instance attributes that belong to the class objects. This essentially means you can do things like:  data = PreprocessDataset(&#39;mnist&#39;) X_train, y_train = data.X_train, data.y_train   where data is the object and X_train and y_train are the attributes. In the case of this class, we have six instance attributes, which are our data sets. The docstring for these attributes is written in the same way as “Parameters” and “Returns”*. Note that the docstring says that the variable datasets can either be ‘MNIST’ or ‘MEDMNIST’. More about this later. One can also choose to give a brief summary for each method in the class in the constructor docstring, but I will not be doing this.  In the constructor, we instance an object loader from the LoadDatasets class (which we will see in a bit). The instance attributes tied to the loader object are the x and y datasets. We then use these and call the method _split_dataset, which will now give us our train, validation, and test sets. The underscore in the method name indicates that this is meant to be an internal method that should not be accessed from outside the class. Python does not enforce this so it can still be called from outside the class if you so wish, but if you find yourself purposely writing underscores to call methods outside of the class constructor or other methods you may want to rethink your coding pipeline. For the last part of the constructor, we turn the different data sets into instance attributes. This is easily done by writing self.X_train = X_train for all variables you want to save.  At this point you may be thinking to yourself, “This is so complicated!! Why are we doing all this if our previous code, without functions and classes, worked just fine?” As Yoda would say, “patience you must have, my young Padawan.” Let’s look at the last class, LoadDatasets and hopefully everything becomes clear.  class LoadDatasets():     &quot;&quot;&quot;     Load and return datasets as PyTorch tensors.      Attributes     ----------     dataset : str         Name of the dataset to load (e.g., &#39;MNIST&#39;, &#39;MEDMNIST&#39;).     X : tc.Tensor         Input features of the dataset as a PyTorch tensor.         shape: (num_samples, channels, height, width)     y : tc.Tensor         Target labels as a PyTorch tensor.      Parameters     ----------     dataset : str         The name of the dataset to load.         Options: &#39;MNIST&#39; or &#39;MEDMNIST&#39;     **kwargs         Additional keyword arguments passed to the specific dataset loader methods.      Raises     ------     ValueError         If an unsupported dataset name is provided.     &quot;&quot;&quot;     def __init__(self, dataset: str, **kwargs):         self.dataset = dataset.upper()         self.loaders = {             &#39;MNIST&#39;: lambda: self.load_mnist(**kwargs),             &#39;MEDMNIST&#39;: lambda: self.load_medmnist(**kwargs),         }          if self.dataset not in self.loaders:             raise ValueError(f&#39;Dataset not supported -&gt; {dataset}. &#39;                              f&#39;Available: {list(self.loaders.keys())}&#39;)          self.X, self.y = self.loaders[self.dataset]()              def load_mnist(self, version: int = 1) -&gt; Tuple[tc.Tensor, tc.Tensor]:         &quot;&quot;&quot;         Load the MNIST dataset and convert it to PyTorch tensors.          Parameters         ----------         version : int, optional (default=1)             The version of the MNIST dataset from OpenML.          Returns         -------         X : tc.Tensor             MNIST images as a float32 tensor normalized to [0, 1].             Shape: (num_samples, 1, 28, 28)         y : tc.Tensor             MNIST labels as int64 tensor.             Shape: (num_samples,)         &quot;&quot;&quot;         from sklearn.datasets import fetch_openml                  X, y = fetch_openml(&#39;mnist_784&#39;, version=version, return_X_y=True, as_frame=False)         X = tc.tensor(X, dtype=tc.float32)         y = tc.from_numpy(y.astype(&#39;int64&#39;))         return X.view(-1, 1, 28, 28), y              def load_medmnist(self, flag: str = &#39;bloodmnist&#39;) -&gt; Tuple[tc.Tensor, tc.Tensor]:         &quot;&quot;&quot;         Load a MedMNIST dataset and convert it to PyTorch tensors.          Parameters         ----------         flag : str, optional (default=&#39;bloodmnist&#39;)             Specifies which MedMNIST dataset to load.             Must be one of the keys in `medmnist.INFO`.          Returns         -------         X : tc.Tensor             MedMNIST images as a float32 tensor normalized to [0, 1].             Shape: (num_samples, channels, height, width)         y : tc.Tensor             MedMNIST labels as long tensors.             Shape: (num_samples,)          Raises         ------         ValueError             If the specified `flag` does not correspond to a valid MedMNIST dataset.         &quot;&quot;&quot;         import medmnist         from medmnist import INFO                  if flag not in INFO:             raise ValueError(f&#39;Invalid MedMNIST flag -&gt; {flag}. &#39;                              f&#39;Available datasets: {list(INFO.keys())}&quot;&#39;)          print(INFO[flag][&#39;label&#39;])         DataClass = getattr(medmnist, INFO[flag][&#39;python_class&#39;])                  train_ds = DataClass(split=&#39;train&#39;, download=True)         val_ds = DataClass(split=&#39;val&#39;, download=True)         test_ds = DataClass(split=&#39;test&#39;, download=True)                  X = np.concatenate([train_ds.imgs, val_ds.imgs, test_ds.imgs], axis=0)         y = np.concatenate([train_ds.labels, val_ds.labels, test_ds.labels], axis=0)                  X = tc.tensor(X, dtype=tc.float32)         y = tc.tensor(y).long().squeeze()         return X.permute(0, 3, 1, 2), y   In the docstring for this class I have included yet another section, “Raises”. By seeing this we know that somewhere in the constructor there will be a piece of code that will potentially raise an error if something is wrong. The docstring says that this will happen if an unsupported dataset name is provided. Aha! So If I pass in an incorrect string or a string that does not match a known dataset in the class an error will be raised.  Looking at the constructor, we see that the dataset string is capitalized. This is to prevent case sensitivity raising an error. The dataset name is passed into a dictionary that calls the method that corresponds to the dataset being asked for. We also see that the methods are called via lambda function. The reason is so that if we have parameters that we need to pass into the dataset methods we can do it as a keyword argument (a.k.a. kwargs). For example, take MEDMNIST, which is a library of medical datasets. An input to the method is the specific MEDMNIST dataset that we want. In this case, the default option is “bloodmnist”. If instead we wanted ChestMNIST, then we pass in “chestmnist” as a keyword argument into get_dataloaders. If no keyword arguments are passed in, then the lambda function is treated as if it was a regular method call.  So let’s review the function and classes used for obtaining the dataloaders. The get_dataloaders function calls the PreprocessDataset class. This class is solely used for grabbing the already loaded features and targets, normalizing, and splitting them into train, validation, and test sets. The PreprocessDataset class calls the LoadDatasets class, which is solely used for loading the features and targets from their respective Python package. The classes do not care about the inner workings of each other. PreprocessDataset only cares that there is a class with the feature and target variables as attributes. On the other hand, LoadDatasets can be called independently from everything else if one only wants the feature and target variables. This way of modularizing code helps once projects start getting big and pipelines get complicated. It keeps everything in such a way so that you can swap out functions or classes with ease. You don’t have everything tangled up together, which can result in headaches when making changes.  Another cool thing is that adding datasets to LoadDatasets is a breeze. All you have to do is write a function in the class that outputs the feature and target variables with the shape $\text{X.shape} = (\text{num_samples}, \text{channels}, \text{height}, \text{width})$ and $\text{y.shape} = (\text{num_samples},)$ and add the dataset to the dictionary in the constructor. From there, getting the dataloaders for this new dataset is as easy as calling get_dataloaders and passing in the appropriate name. You don’t have to copy over you preprocessing pipeline or the train_test_split function.  I won’t go over the functions train_model and evaluate_model since they are pretty self-explanatory and the bulk of it was covered last week. What I do want to show are the train, validation, and test results:  Epoch 1, Train Accuracy: 0.88814815, Validation Accuracy: 0.94385714 Epoch 2, Train Accuracy: 0.95839506, Validation Accuracy: 0.96385714 Epoch 3, Train Accuracy: 0.97007055, Validation Accuracy: 0.96928571 Test Accuracy: 0.97190476   We note that they are the same as last week! This means that our code refactoring did not fundamentally change anything in the model, which is great validation that we did not introduce a bug into the code. The misclassified images are also the same:    which is to be expected since we are seeding all the random number generators. All is well. The cool thing is that all the training and evaluation code is agnostic to the dataset, which means that you can use it on other datasets with very minimal tweaks!  The functions used to produce the plots are also written in such a way as to allow flexibility when using different datasets. I will only go over one of the functions:  def plot_images(     loader: tc.utils.data.DataLoader,      path: str,      dpi: int,      data: str,     size: list = [2, 5],      figsize: Tuple = (14, 6),     cmap: str = None ) -&gt; None:     &quot;&quot;&quot;     Plots a subset of the dataset images.      Parameters     ----------     loader : tc.utils.data.DataLoader         DataLoader for the training set.     path : str         String to the directory where the plot is saved.     dpi : int         Dots per inch.         A higher dpi results in a sharper image.     data : str         The name of the dataset being plotted.         This is used to label the plot when saving to directory.     size : list, optional (default=[2, 5])         Specifies the number of rows and columns.     figsize : Tuple, optional (default=[14, 6])         Specifies the figure size.     cmap : str, optional (default=None)         Colormap for 2D images.     &quot;&quot;&quot;     images, labels = next(iter(loader))      fig, axes = plt.subplots(size[0], size[1], figsize=figsize)     for i, ax in enumerate(axes.flat):         img = images[i].permute(1, 2, 0)         if img.shape[-1] == 1:             img = img.squeeze()             cmap = &#39;gray&#39;                      ax.imshow(img, cmap=cmap)         ax.set_title(f&quot;Label: {labels[i].item()}&quot;, fontsize=16)         ax.axis(&#39;off&#39;)     plt.show();          fig.set_constrained_layout_pads(w_pad=0.01, h_pad=0.01)     fig.savefig(path + f&#39;example_image_{data}.png&#39;, bbox_inches=&#39;tight&#39;, dpi=dpi)   I won’t belabor the type hinting and docstring, but I do want to point out something we didn’t seen in the previous examples, which is loader: tc.utils.data.DataLoader. This way of type hinting happens when the object being passed into the function is not some straighforward data type like an integer or float. In this case, you can simply write what one would write if they want to import that object. Here, I have already imported torch as tc so I simply need to complete the path to import DataLoader and use that as the type hint.  Let’s jump to the code portion since we have pretty much already discussed type hinting and docstrings. The function is written in such a way as to allow someone to pass in grayscale or color images. This can be seen from the following line: if img.shape[-1] == 1:. This if-statement checks if the image is grayscale, and, if so, it squeezes the single channel input portion so that a 2D image can be plotted. If the last element size is not $1$, there is no squeezing and the plots are shown in color with the $3$ input channels. The final line saves the plot to a folder and appropriately labels it based on the data that was passed in.  Summary: So we’ve gone over quite a bit in this blog post. We first discussed how to save parameters in a yaml file, how to import them into the workspace, and how to turn them into attributes of an object. We went over type hinting and writing docstrings for functions and classes, as well as implementing a machine learning pipeline for easier project deployment. To be sure we did not introduce any errors in the code, we ran the same example as in the previous week and got the same outputs, which means our refactoring did not introduce any bugs. Overall, we’ve managed to take a specific problem and create a pipeline that can then be applied to a wide variety of datasets.  The code presented and plots displayed in the Convolutional neural network with the MNIST dataset posts can be found on my Github under the build-cnn repo [1]. Feel free to reach out if you have any questions about what we covered this week. I will take a break the next few weeks and come back with hyperparameter tuning and model debugging. Stay tuned!  [1] Alberto J. Garcia, Build CNN, 2025. Available at: https://github.com/AJG91/build-cnn. ⬅ Back to Home">
+
+
+
+
+
+
+
+  <meta property="article:published_time" content="2025-09-14T00:00:00-07:00">
+
+
+
+
+
+
+<link rel="canonical" href="https://ajg91.github.io//posts/machine-learning/convolutional-neural-network-with-mnist-pipeline/">
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- end _includes/seo.html -->
+
+
+
+  <link href="/feed.xml" type="application/atom+xml" rel="alternate" title="AJG's Homepage Feed">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+  
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css"></noscript>
+
+
+
+    <script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$','$$'], ['\\[','\\]']]
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
+  </head>
+
+  <body class="layout--single" dir="ltr">
+    <nav class="skip-links">
+  <ul>
+    <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
+    <li><a href="#main" class="screen-reader-shortcut">Skip to content</a></li>
+    <li><a href="#footer" class="screen-reader-shortcut">Skip to footer</a></li>
+  </ul>
+</nav>
+
+    
+
+<div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        
+        <a class="site-title" href="/">
+          AJG&#39;s Homepage
+          
+        </a>
+        <ul class="visible-links"><li class="masthead__menu-item">
+              <a
+                href="/posts/"
+                
+                
+              >Posts</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/publications/"
+                
+                
+              >Publications</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/talks/"
+                
+                
+              >Talks</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/software/"
+                
+                
+              >Software</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/contact/"
+                
+                
+              >Contact Me</a>
+            </li></ul>
+        
+        <button class="greedy-nav__toggle hidden" type="button">
+          <span class="visually-hidden">Toggle menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+
+    <div class="initial-content">
+      
+
+
+
+
+  
+    
+
+
+
+<nav class="breadcrumbs">
+  <ol itemscope itemtype="https://schema.org/BreadcrumbList">
+    
+    
+    
+      
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/" itemprop="item"><span itemprop="name">Home</span></a>
+
+          <meta itemprop="position" content="1" />
+        </li>
+        <span class="sep">/</span>
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/posts" itemprop="item"><span itemprop="name">Posts</span></a>
+          <meta itemprop="position" content="2" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/machine-learning" itemprop="item"><span itemprop="name">Machine learning</span></a>
+          <meta itemprop="position" content="3" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        <li class="current">Convolutional neural networks: MNIST dataset with machine learning pipeline</li>
+      
+    
+  </ol>
+</nav>
+
+  
+
+
+<div id="main" role="main">
+  
+
+
+  <article class="page" itemscope itemtype="https://schema.org/CreativeWork">
+    <meta itemprop="headline" content="Convolutional neural networks: MNIST dataset with machine learning pipeline">
+    <meta itemprop="description" content="September 14, 2025Last week we went over how to construct a convolutional neural network (CNN) and applied the model to the MNIST dataset. This week I will show you how to modify the code to create a machine learning pipeline and well-documented. As before, here is the documentation for the function that we will be using to load the MNIST dataset.The process of refactoring and creating a pipeline is important because, if done correctly, it can save time and reduce errors. A code pipeline creates an automated and efficient system. By standardizing the workflow, the amount of errors will be reduced and, if there is an error, it will be easier to pinpoint and fix. It also makes starting future projects easier by allowing the use of the different components of the pipeline along different projects, thus speeding up the coding process and not reinventing the wheel. Another key feature of creating code pipelines is that it makes it simple to try different algorithms, hyperparameters, or preprocessing steps by keeping the workflow consistent.The importance of documenting your code is something that cannot be stressed enough. Oftentimes, one finds that they come back to different pieces of code that they wrote a few months and have to take time to figure out what they did, which can be time consuming. The lack of documentation can be even more stressful when working with other people’s code that isn’t documented. Today I will show you how I document my code. I will also show a cool way to store parameters. I will be using the same CNN, same dataset, and same random seed to make sure that our changes do not affect the output.First, let’s look at how to store parameters. I will present one way, but there are many different ways. In my case, I use the function SimpleNamespace and a yaml file.Here’s the yaml file I am using in this particular case:path: &#39;../outputs/&#39;seed: 42split_size: 0.1batch_size: 64learning_rate: 0.001epochs: 3input_size: 1output_size: 10hidden_size: 128The first thing we see is the path where we will be outputting the plots to. We also have the seed to seed all random number generators. The next batch are parameters used for splitting the dataset, the learning rate for the optimizer, and the number of times we will train the model. The last batch of parameters indicate the different sizes that we need to build our CNN.from types import SimpleNamespacedpi = 400dataset = &#39;mnist&#39;config = load_config(path=f&#39;../config_{dataset}.yaml&#39;)cfg = SimpleNamespace(**config)print(json.dumps(vars(cfg), indent=2))set_seed(cfg.seed)device = &quot;cuda&quot; if tc.cuda.is_available() else &quot;cpu&quot;We load the yaml file into the variable config as a dictionary. This variable is then passed into the function SimpleNamespace. The double asterisk unpacks the key-value pairs as keyword arguments into the variable cfg, allowing us to call the parameters as attributes of cfg. This is pretty neat! Now all the parameters are stored in one place. All you have to do is call them from cfg as is shown in the function call set_seed(cfg.seed). We also specify the device that will be used, writing the code in such a way so that CUDA is the desired choice if available.Next, we initialize the model, optimizer, loss function, and get our train, validation, and test dataloaders.cnn = SimpleCNN(cfg.input_size, cfg.output_size, cfg.hidden_size).to(device)optimizer = optim.AdamW(cnn.parameters(), lr=cfg.learning_rate)loss_fn = nn.CrossEntropyLoss()train, val, test = get_dataloaders(dataset, cfg.split_size, cfg.batch_size, cfg.seed)Overall, this should be self-explanatory since it’s the same process as shown in last week’s post, but now we have a function for getting the dataloaders. Let’s look at this function closely. I will use this function and the subsequent classes used in get_dataloaders to explain creating a machine learning pipeline and documenting the code. I won’t go over every detail, but will focus on what I feel is important to understand. I will start out by showing each individual component of get_dataloaders, then show the full function at the end. For subsequent classes, I will only show the relevant subset of the class. Let’s get started:def get_dataloaders(    dataset: str,    split_size: float = 0.1,    batch_size: int = 64,    seed: int = 42,    **kwargs) -&gt; Tuple[DataLoader, DataLoader, DataLoader]:First, let’s look at the header. If you contrast the inputs with my previous codes, you see that I now show the data types of the inputs. This is called type hinting. It allows one to quickly understand what kind of inputs the function expects. For example, I can have a function header such asdef add(x, a, b):While we can probably guess that we are adding numbers, what if the function looked like the following:def add(x, a, b):    return x[a] + x[b]if we would have passed floats into a and b, it would have resulted in an error. Imagine instead we wrote:def add(x: numpy.ndarray, a: int, b: int) -&gt; float:    return x[a] + x[b]Now we know that x is a numpy array, a is an integer, b is an integer, and the resulting output is a floating point. While we may still need to look at the documentation to get more information on the function, at least we wouldn’t have made the initial error of passing in floats.Looking back at the get_dataloaders function, we see that dataset is a string. If there was no type hinting we might have thought it was the actual dataset that was being passed into the function. We can also see that split_size is a float and has a default value, and batch_size and seed are integers with default values, as well. The expected output of the function is also shown and is a tuple composed of three dataloaders. At a glance, we immediately have more information about the function compared to if it did not have type hinting.From here, we look at the docstring, which is the documentation:&quot;&quot;&quot;Create PyTorch DataLoaders for training, validation, and test sets.Parameters----------dataset : str    Name of the dataset to load.split_size : float, optional (default=0.1)    The fraction of data that will be split off for the validation/test set.batch_size : int, optional (default=64)    Number of samples per batch.seed : int, optional (default=42)    Random seed for reproducible splitting of the dataset.**kwargs    Additional keyword arguments.Returns-------train_loader : DataLoader    DataLoader for the training set, with shuffling enabled.val_loader : DataLoader    DataLoader for the validation set, without shuffling.test_loader : DataLoader    DataLoader for the test set, without shuffling.&quot;&quot;&quot;Basic documentation is broken down into three parts: description, inputs, and outputs. One can get more sophisticated with the docstring if one wishes, but let’s keep it basic for now. The description of this function is short and to the point. The function creates PyTorch DataLoaders for training, validation, and test sets. The input section is given by “Parameters” and shows the data type and gives a short description of each input variable and whether or not they have a default value (find optional in docstring). Here, I don’t have arrays (or tensors), but if one does it is always good to include the expected shape of the array in the short description. The final section is given by “Returns” and displays the outputs of the function with the data type and short description of each output variable just like with the inputs.At this point we know exactly what the function does, the different data types involved, and the inputs and outputs of the function. Now, all that’s left is the code itself so that we can capture all the details of the function.data = PreprocessDataset(dataset, split_size, rand_seed=seed, **kwargs)return (    DataLoader(TensorDataset(data.X_train, data.y_train), batch_size=batch_size, shuffle=True),    DataLoader(TensorDataset(data.X_val, data.y_val), batch_size=batch_size),    DataLoader(TensorDataset(data.X_test, data.y_test), batch_size=batch_size))Here, we see that we call PreprocessDataset with the dataset, which returns an object data with the training, validation, and test data as attributes. These attributes are then passed into TensorDataset and DataLoader like in my previous post. The order of the dataloaders in the output tuple are (train, validation, test). Combining the header, docstring, and code gives us the full function:def get_dataloaders(    dataset: str,    split_size: float = 0.1,    batch_size: int = 64,    seed: int = 42,    **kwargs) -&gt; Tuple[DataLoader, DataLoader, DataLoader]:    &quot;&quot;&quot;    Create PyTorch DataLoaders for training, validation, and test sets.    Parameters    ----------    dataset : str        Name of the dataset to load.    split_size : float, optional (default=0.1)        The fraction of data that will be split off for the validation/test set.    batch_size : int, optional (default=64)        Number of samples per batch.    seed : int, optional (default=42)        Random seed for reproducible splitting of the dataset.    **kwargs        Additional keyword arguments.    Returns    -------    train_loader : DataLoader        DataLoader for the training set, with shuffling enabled.    val_loader : DataLoader        DataLoader for the validation set, without shuffling.    test_loader : DataLoader        DataLoader for the test set, without shuffling.    &quot;&quot;&quot;    data = PreprocessDataset(dataset, split_size, rand_seed=seed, **kwargs)    return (        DataLoader(TensorDataset(data.X_train, data.y_train), batch_size=batch_size, shuffle=True),        DataLoader(TensorDataset(data.X_val, data.y_val), batch_size=batch_size),        DataLoader(TensorDataset(data.X_test, data.y_test), batch_size=batch_size)    )It’s definitely more verbose than if I just included the code portion, but there is now so much information embedded in it that will be useful when it comes time to use this function!Let’s now take a look at a subset of the class PreprocessDataset:class PreprocessDataset(Dataset):    &quot;&quot;&quot;    Preprocess a dataset and provide train, validation, and test splits as PyTorch tensors.    Attributes    ----------    X_train : tc.Tensor        Training input features.    y_train : tc.Tensor        Training labels.    X_val : tc.Tensor        Validation input features.    y_val : tc.Tensor        Validation labels.    X_test : tc.Tensor        Test input features.    y_test : tc.Tensor        Test labels.    Parameters    ----------    dataset : str        Name of the dataset to load.        Options: &#39;MNIST&#39;, &#39;MEDMNIST&#39;    split_size : float, optional (default=0.1)        The fraction of data that will be split off for the validation/test set.    rand_seed : int, optional (default=42)        Random seed for reproducible splitting.    **kwargs        Additional keyword arguments.    &quot;&quot;&quot;    def __init__(        self,         dataset: str,         split_size: float = 0.1,         rand_seed: int = 42,         **kwargs    ):        loader = LoadDatasets(dataset, **kwargs)        X, y = loader.X / 255.0, loader.y                X_train, X_val, y_train, y_val = self._split_dataset(X, y, split_size, rand_seed)        X_train, X_test, y_train, y_test = self._split_dataset(X_train, y_train, split_size, rand_seed)        self.X_train, self.y_train = X_train, y_train        self.X_val, self.y_val = X_val, y_val        self.X_test, self.y_test = X_test, y_test    def _split_dataset(        self,         X: tc.Tensor,         y: tc.Tensor,         split_size: float,         rand_seed: int    ) -&gt; Tuple[tc.Tensor, tc.Tensor, tc.Tensor, tc.Tensor]:        &quot;&quot;&quot;        Split the dataset into train/test or train/validation subsets.        Parameters        ----------        X : tc.Tensor            Input features.        y : tc.Tensor            Target labels.        split_size : float            The fraction of data that will be split off for the validation/test set.        rand_seed : int            Random seed for reproducibility.        Returns        -------        X_train : tc.Tensor            Features of the first split.        X_test : tc.Tensor            Features of the second split.        y_train : tc.Tensor            Labels of the first split.        y_test : tc.Tensor            Labels of the second split.        &quot;&quot;&quot;        return train_test_split(X, y, test_size=split_size, random_state=rand_seed)The main docstring for a class documents the constructor. Then, each individual function has it’s own docstring. Looking at the constructor docstring, you will see that we have now included “Attributes”. These are instance attributes that belong to the class objects. This essentially means you can do things like:data = PreprocessDataset(&#39;mnist&#39;)X_train, y_train = data.X_train, data.y_trainwhere data is the object and X_train and y_train are the attributes. In the case of this class, we have six instance attributes, which are our data sets. The docstring for these attributes is written in the same way as “Parameters” and “Returns”*. Note that the docstring says that the variable datasets can either be ‘MNIST’ or ‘MEDMNIST’. More about this later. One can also choose to give a brief summary for each method in the class in the constructor docstring, but I will not be doing this.In the constructor, we instance an object loader from the LoadDatasets class (which we will see in a bit). The instance attributes tied to the loader object are the x and y datasets. We then use these and call the method _split_dataset, which will now give us our train, validation, and test sets. The underscore in the method name indicates that this is meant to be an internal method that should not be accessed from outside the class. Python does not enforce this so it can still be called from outside the class if you so wish, but if you find yourself purposely writing underscores to call methods outside of the class constructor or other methods you may want to rethink your coding pipeline. For the last part of the constructor, we turn the different data sets into instance attributes. This is easily done by writing self.X_train = X_train for all variables you want to save.At this point you may be thinking to yourself, “This is so complicated!! Why are we doing all this if our previous code, without functions and classes, worked just fine?” As Yoda would say, “patience you must have, my young Padawan.” Let’s look at the last class, LoadDatasets and hopefully everything becomes clear.class LoadDatasets():    &quot;&quot;&quot;    Load and return datasets as PyTorch tensors.    Attributes    ----------    dataset : str        Name of the dataset to load (e.g., &#39;MNIST&#39;, &#39;MEDMNIST&#39;).    X : tc.Tensor        Input features of the dataset as a PyTorch tensor.        shape: (num_samples, channels, height, width)    y : tc.Tensor        Target labels as a PyTorch tensor.    Parameters    ----------    dataset : str        The name of the dataset to load.        Options: &#39;MNIST&#39; or &#39;MEDMNIST&#39;    **kwargs        Additional keyword arguments passed to the specific dataset loader methods.    Raises    ------    ValueError        If an unsupported dataset name is provided.    &quot;&quot;&quot;    def __init__(self, dataset: str, **kwargs):        self.dataset = dataset.upper()        self.loaders = {            &#39;MNIST&#39;: lambda: self.load_mnist(**kwargs),            &#39;MEDMNIST&#39;: lambda: self.load_medmnist(**kwargs),        }        if self.dataset not in self.loaders:            raise ValueError(f&#39;Dataset not supported -&gt; {dataset}. &#39;                             f&#39;Available: {list(self.loaders.keys())}&#39;)        self.X, self.y = self.loaders[self.dataset]()            def load_mnist(self, version: int = 1) -&gt; Tuple[tc.Tensor, tc.Tensor]:        &quot;&quot;&quot;        Load the MNIST dataset and convert it to PyTorch tensors.        Parameters        ----------        version : int, optional (default=1)            The version of the MNIST dataset from OpenML.        Returns        -------        X : tc.Tensor            MNIST images as a float32 tensor normalized to [0, 1].            Shape: (num_samples, 1, 28, 28)        y : tc.Tensor            MNIST labels as int64 tensor.            Shape: (num_samples,)        &quot;&quot;&quot;        from sklearn.datasets import fetch_openml                X, y = fetch_openml(&#39;mnist_784&#39;, version=version, return_X_y=True, as_frame=False)        X = tc.tensor(X, dtype=tc.float32)        y = tc.from_numpy(y.astype(&#39;int64&#39;))        return X.view(-1, 1, 28, 28), y            def load_medmnist(self, flag: str = &#39;bloodmnist&#39;) -&gt; Tuple[tc.Tensor, tc.Tensor]:        &quot;&quot;&quot;        Load a MedMNIST dataset and convert it to PyTorch tensors.        Parameters        ----------        flag : str, optional (default=&#39;bloodmnist&#39;)            Specifies which MedMNIST dataset to load.            Must be one of the keys in `medmnist.INFO`.        Returns        -------        X : tc.Tensor            MedMNIST images as a float32 tensor normalized to [0, 1].            Shape: (num_samples, channels, height, width)        y : tc.Tensor            MedMNIST labels as long tensors.            Shape: (num_samples,)        Raises        ------        ValueError            If the specified `flag` does not correspond to a valid MedMNIST dataset.        &quot;&quot;&quot;        import medmnist        from medmnist import INFO                if flag not in INFO:            raise ValueError(f&#39;Invalid MedMNIST flag -&gt; {flag}. &#39;                             f&#39;Available datasets: {list(INFO.keys())}&quot;&#39;)        print(INFO[flag][&#39;label&#39;])        DataClass = getattr(medmnist, INFO[flag][&#39;python_class&#39;])                train_ds = DataClass(split=&#39;train&#39;, download=True)        val_ds = DataClass(split=&#39;val&#39;, download=True)        test_ds = DataClass(split=&#39;test&#39;, download=True)                X = np.concatenate([train_ds.imgs, val_ds.imgs, test_ds.imgs], axis=0)        y = np.concatenate([train_ds.labels, val_ds.labels, test_ds.labels], axis=0)                X = tc.tensor(X, dtype=tc.float32)        y = tc.tensor(y).long().squeeze()        return X.permute(0, 3, 1, 2), yIn the docstring for this class I have included yet another section, “Raises”. By seeing this we know that somewhere in the constructor there will be a piece of code that will potentially raise an error if something is wrong. The docstring says that this will happen if an unsupported dataset name is provided. Aha! So If I pass in an incorrect string or a string that does not match a known dataset in the class an error will be raised.Looking at the constructor, we see that the dataset string is capitalized. This is to prevent case sensitivity raising an error. The dataset name is passed into a dictionary that calls the method that corresponds to the dataset being asked for. We also see that the methods are called via lambda function. The reason is so that if we have parameters that we need to pass into the dataset methods we can do it as a keyword argument (a.k.a. kwargs). For example, take MEDMNIST, which is a library of medical datasets. An input to the method is the specific MEDMNIST dataset that we want. In this case, the default option is “bloodmnist”. If instead we wanted ChestMNIST, then we pass in “chestmnist” as a keyword argument into get_dataloaders. If no keyword arguments are passed in, then the lambda function is treated as if it was a regular method call.So let’s review the function and classes used for obtaining the dataloaders. The get_dataloaders function calls the PreprocessDataset class. This class is solely used for grabbing the already loaded features and targets, normalizing, and splitting them into train, validation, and test sets. The PreprocessDataset class calls the LoadDatasets class, which is solely used for loading the features and targets from their respective Python package. The classes do not care about the inner workings of each other. PreprocessDataset only cares that there is a class with the feature and target variables as attributes. On the other hand, LoadDatasets can be called independently from everything else if one only wants the feature and target variables. This way of modularizing code helps once projects start getting big and pipelines get complicated. It keeps everything in such a way so that you can swap out functions or classes with ease. You don’t have everything tangled up together, which can result in headaches when making changes.Another cool thing is that adding datasets to LoadDatasets is a breeze. All you have to do is write a function in the class that outputs the feature and target variables with the shape $\text{X.shape} = (\text{num_samples}, \text{channels}, \text{height}, \text{width})$ and $\text{y.shape} = (\text{num_samples},)$ and add the dataset to the dictionary in the constructor. From there, getting the dataloaders for this new dataset is as easy as calling get_dataloaders and passing in the appropriate name. You don’t have to copy over you preprocessing pipeline or the train_test_split function.I won’t go over the functions train_model and evaluate_model since they are pretty self-explanatory and the bulk of it was covered last week. What I do want to show are the train, validation, and test results:Epoch 1, Train Accuracy: 0.88814815, Validation Accuracy: 0.94385714Epoch 2, Train Accuracy: 0.95839506, Validation Accuracy: 0.96385714Epoch 3, Train Accuracy: 0.97007055, Validation Accuracy: 0.96928571Test Accuracy: 0.97190476We note that they are the same as last week! This means that our code refactoring did not fundamentally change anything in the model, which is great validation that we did not introduce a bug into the code. The misclassified images are also the same:which is to be expected since we are seeding all the random number generators. All is well. The cool thing is that all the training and evaluation code is agnostic to the dataset, which means that you can use it on other datasets with very minimal tweaks!The functions used to produce the plots are also written in such a way as to allow flexibility when using different datasets. I will only go over one of the functions:def plot_images(    loader: tc.utils.data.DataLoader,     path: str,     dpi: int,     data: str,    size: list = [2, 5],     figsize: Tuple = (14, 6),    cmap: str = None) -&gt; None:    &quot;&quot;&quot;    Plots a subset of the dataset images.    Parameters    ----------    loader : tc.utils.data.DataLoader        DataLoader for the training set.    path : str        String to the directory where the plot is saved.    dpi : int        Dots per inch.        A higher dpi results in a sharper image.    data : str        The name of the dataset being plotted.        This is used to label the plot when saving to directory.    size : list, optional (default=[2, 5])        Specifies the number of rows and columns.    figsize : Tuple, optional (default=[14, 6])        Specifies the figure size.    cmap : str, optional (default=None)        Colormap for 2D images.    &quot;&quot;&quot;    images, labels = next(iter(loader))    fig, axes = plt.subplots(size[0], size[1], figsize=figsize)    for i, ax in enumerate(axes.flat):        img = images[i].permute(1, 2, 0)        if img.shape[-1] == 1:            img = img.squeeze()            cmap = &#39;gray&#39;                    ax.imshow(img, cmap=cmap)        ax.set_title(f&quot;Label: {labels[i].item()}&quot;, fontsize=16)        ax.axis(&#39;off&#39;)    plt.show();        fig.set_constrained_layout_pads(w_pad=0.01, h_pad=0.01)    fig.savefig(path + f&#39;example_image_{data}.png&#39;, bbox_inches=&#39;tight&#39;, dpi=dpi)I won’t belabor the type hinting and docstring, but I do want to point out something we didn’t seen in the previous examples, which is loader: tc.utils.data.DataLoader. This way of type hinting happens when the object being passed into the function is not some straighforward data type like an integer or float. In this case, you can simply write what one would write if they want to import that object. Here, I have already imported torch as tc so I simply need to complete the path to import DataLoader and use that as the type hint.Let’s jump to the code portion since we have pretty much already discussed type hinting and docstrings. The function is written in such a way as to allow someone to pass in grayscale or color images. This can be seen from the following line: if img.shape[-1] == 1:. This if-statement checks if the image is grayscale, and, if so, it squeezes the single channel input portion so that a 2D image can be plotted. If the last element size is not $1$, there is no squeezing and the plots are shown in color with the $3$ input channels. The final line saves the plot to a folder and appropriately labels it based on the data that was passed in.Summary:So we’ve gone over quite a bit in this blog post. We first discussed how to save parameters in a yaml file, how to import them into the workspace, and how to turn them into attributes of an object. We went over type hinting and writing docstrings for functions and classes, as well as implementing a machine learning pipeline for easier project deployment. To be sure we did not introduce any errors in the code, we ran the same example as in the previous week and got the same outputs, which means our refactoring did not introduce any bugs. Overall, we’ve managed to take a specific problem and create a pipeline that can then be applied to a wide variety of datasets.The code presented and plots displayed in the Convolutional neural network with the MNIST dataset posts can be found on my Github under the build-cnn repo [1]. Feel free to reach out if you have any questions about what we covered this week. I will take a break the next few weeks and come back with hyperparameter tuning and model debugging. Stay tuned![1] Alberto J. Garcia, Build CNN, 2025. Available at: https://github.com/AJG91/build-cnn.⬅ Back to Home">
+    <meta itemprop="datePublished" content="2025-09-14T00:00:00-07:00">
+    
+
+    <div class="page__inner-wrap">
+      
+        <header>
+          <h1 id="page-title" class="page__title" itemprop="headline">
+            <a href="https://ajg91.github.io//posts/machine-learning/convolutional-neural-network-with-mnist-pipeline/" itemprop="url">Convolutional neural networks: MNIST dataset with machine learning pipeline
+</a>
+          </h1>
+          
+
+
+        </header>
+      
+
+      <section class="page__content" itemprop="text">
+        
+        <p class="post-date">September 14, 2025</p>
+
+<p>Last week we went over how to construct a convolutional neural network (CNN) and applied the model to the MNIST dataset. This week I will show you how to modify the code to create a machine learning pipeline and well-documented. As before, here is the documentation for the function that we will be using to load the <a href="https://www.openml.org/search?type=data&amp;sort=runs&amp;id=554&amp;status=active" title="MNIST-docs">MNIST</a> dataset.</p>
+
+<p>The process of refactoring and creating a pipeline is important because, if done correctly, it can save time and reduce errors. A code pipeline creates an automated and efficient system. By standardizing the workflow, the amount of errors will be reduced and, if there is an error, it will be easier to pinpoint and fix. It also makes starting future projects easier by allowing the use of the different components of the pipeline along different projects, thus speeding up the coding process and not reinventing the wheel. Another key feature of creating code pipelines is that it makes it simple to try different algorithms, hyperparameters, or preprocessing steps by keeping the workflow consistent.</p>
+
+<p>The importance of documenting your code is something that cannot be stressed enough. Oftentimes, one finds that they come back to different pieces of code that they wrote a few months and have to take time to figure out what they did, which can be time consuming. The lack of documentation can be even more stressful when working with other people’s code that isn’t documented. Today I will show you how I document my code. I will also show a cool way to store parameters. I will be using the same CNN, same dataset, and same random seed to make sure that our changes do not affect the output.</p>
+
+<p>First, let’s look at how to store parameters. I will present one way, but there are many different ways. In my case, I use the function <code class="language-plaintext highlighter-rouge">SimpleNamespace</code> and a yaml file.</p>
+
+<p>Here’s the yaml file I am using in this particular case:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">path</span><span class="p">:</span> <span class="sh">'</span><span class="s">../outputs/</span><span class="sh">'</span>
+<span class="n">seed</span><span class="p">:</span> <span class="mi">42</span>
+
+<span class="n">split_size</span><span class="p">:</span> <span class="mf">0.1</span>
+<span class="n">batch_size</span><span class="p">:</span> <span class="mi">64</span>
+<span class="n">learning_rate</span><span class="p">:</span> <span class="mf">0.001</span>
+<span class="n">epochs</span><span class="p">:</span> <span class="mi">3</span>
+
+<span class="n">input_size</span><span class="p">:</span> <span class="mi">1</span>
+<span class="n">output_size</span><span class="p">:</span> <span class="mi">10</span>
+<span class="n">hidden_size</span><span class="p">:</span> <span class="mi">128</span>
+</code></pre></div></div>
+
+<p>The first thing we see is the path where we will be outputting the plots to. We also have the seed to seed all random number generators. The next batch are parameters used for splitting the dataset, the learning rate for the optimizer, and the number of times we will train the model. The last batch of parameters indicate the different sizes that we need to build our CNN.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="n">types</span> <span class="kn">import</span> <span class="n">SimpleNamespace</span>
+
+<span class="n">dpi</span> <span class="o">=</span> <span class="mi">400</span>
+<span class="n">dataset</span> <span class="o">=</span> <span class="sh">'</span><span class="s">mnist</span><span class="sh">'</span>
+
+<span class="n">config</span> <span class="o">=</span> <span class="nf">load_config</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="sa">f</span><span class="sh">'</span><span class="s">../config_</span><span class="si">{</span><span class="n">dataset</span><span class="si">}</span><span class="s">.yaml</span><span class="sh">'</span><span class="p">)</span>
+<span class="n">cfg</span> <span class="o">=</span> <span class="nc">SimpleNamespace</span><span class="p">(</span><span class="o">**</span><span class="n">config</span><span class="p">)</span>
+<span class="nf">print</span><span class="p">(</span><span class="n">json</span><span class="p">.</span><span class="nf">dumps</span><span class="p">(</span><span class="nf">vars</span><span class="p">(</span><span class="n">cfg</span><span class="p">),</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+
+<span class="nf">set_seed</span><span class="p">(</span><span class="n">cfg</span><span class="p">.</span><span class="n">seed</span><span class="p">)</span>
+<span class="n">device</span> <span class="o">=</span> <span class="sh">"</span><span class="s">cuda</span><span class="sh">"</span> <span class="k">if</span> <span class="n">tc</span><span class="p">.</span><span class="n">cuda</span><span class="p">.</span><span class="nf">is_available</span><span class="p">()</span> <span class="k">else</span> <span class="sh">"</span><span class="s">cpu</span><span class="sh">"</span>
+</code></pre></div></div>
+
+<p>We load the <code class="language-plaintext highlighter-rouge">yaml</code> file into the variable <code class="language-plaintext highlighter-rouge">config</code> as a dictionary. This variable is then passed into the function <code class="language-plaintext highlighter-rouge">SimpleNamespace</code>. The double asterisk unpacks the key-value pairs as keyword arguments into the variable <code class="language-plaintext highlighter-rouge">cfg</code>, allowing us to call the parameters as attributes of <code class="language-plaintext highlighter-rouge">cfg</code>. This is pretty neat! Now all the parameters are stored in one place. All you have to do is call them from <code class="language-plaintext highlighter-rouge">cfg</code> as is shown in the function call <code class="language-plaintext highlighter-rouge">set_seed(cfg.seed)</code>. We also specify the device that will be used, writing the code in such a way so that CUDA is the desired choice if available.</p>
+
+<p>Next, we initialize the model, optimizer, loss function, and get our train, validation, and test dataloaders.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">cnn</span> <span class="o">=</span> <span class="nc">SimpleCNN</span><span class="p">(</span><span class="n">cfg</span><span class="p">.</span><span class="n">input_size</span><span class="p">,</span> <span class="n">cfg</span><span class="p">.</span><span class="n">output_size</span><span class="p">,</span> <span class="n">cfg</span><span class="p">.</span><span class="n">hidden_size</span><span class="p">).</span><span class="nf">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+<span class="n">optimizer</span> <span class="o">=</span> <span class="n">optim</span><span class="p">.</span><span class="nc">AdamW</span><span class="p">(</span><span class="n">cnn</span><span class="p">.</span><span class="nf">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="n">cfg</span><span class="p">.</span><span class="n">learning_rate</span><span class="p">)</span>
+<span class="n">loss_fn</span> <span class="o">=</span> <span class="n">nn</span><span class="p">.</span><span class="nc">CrossEntropyLoss</span><span class="p">()</span>
+
+<span class="n">train</span><span class="p">,</span> <span class="n">val</span><span class="p">,</span> <span class="n">test</span> <span class="o">=</span> <span class="nf">get_dataloaders</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">cfg</span><span class="p">.</span><span class="n">split_size</span><span class="p">,</span> <span class="n">cfg</span><span class="p">.</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">cfg</span><span class="p">.</span><span class="n">seed</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Overall, this should be self-explanatory since it’s the same process as shown in last week’s post, but now we have a function for getting the dataloaders. Let’s look at this function closely. I will use this function and the subsequent classes used in <code class="language-plaintext highlighter-rouge">get_dataloaders</code> to explain creating a machine learning pipeline and documenting the code. I won’t go over every detail, but will focus on what I feel is important to understand. I will start out by showing each individual component of <code class="language-plaintext highlighter-rouge">get_dataloaders</code>, then show the full function at the end. For subsequent classes, I will only show the relevant subset of the class. Let’s get started:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">get_dataloaders</span><span class="p">(</span>
+    <span class="n">dataset</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">split_size</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.1</span><span class="p">,</span>
+    <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">64</span><span class="p">,</span>
+    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">42</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">DataLoader</span><span class="p">,</span> <span class="n">DataLoader</span><span class="p">,</span> <span class="n">DataLoader</span><span class="p">]:</span>
+</code></pre></div></div>
+
+<p>First, let’s look at the header. If you contrast the inputs with my previous codes, you see that I now show the data types of the inputs. This is called <em>type hinting</em>. It allows one to quickly understand what kind of inputs the function expects. For example, I can have a function header such as</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">add</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+</code></pre></div></div>
+
+<p>While we can probably guess that we are adding numbers, what if the function looked like the following:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">add</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">x</span><span class="p">[</span><span class="n">a</span><span class="p">]</span> <span class="o">+</span> <span class="n">x</span><span class="p">[</span><span class="n">b</span><span class="p">]</span>
+</code></pre></div></div>
+
+<p>if we would have passed floats into <code class="language-plaintext highlighter-rouge">a</code> and <code class="language-plaintext highlighter-rouge">b</code>, it would have resulted in an error. Imagine instead we wrote:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">add</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">numpy</span><span class="p">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">a</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">x</span><span class="p">[</span><span class="n">a</span><span class="p">]</span> <span class="o">+</span> <span class="n">x</span><span class="p">[</span><span class="n">b</span><span class="p">]</span>
+</code></pre></div></div>
+
+<p>Now we know that <code class="language-plaintext highlighter-rouge">x</code> is a numpy array, <code class="language-plaintext highlighter-rouge">a</code> is an integer, <code class="language-plaintext highlighter-rouge">b</code> is an integer, and the resulting output is a floating point. While we may still need to look at the documentation to get more information on the function, at least we wouldn’t have made the initial error of passing in floats.</p>
+
+<p>Looking back at the <code class="language-plaintext highlighter-rouge">get_dataloaders</code> function, we see that <code class="language-plaintext highlighter-rouge">dataset</code> is a string. If there was no type hinting we might have thought it was the actual dataset that was being passed into the function. We can also see that <code class="language-plaintext highlighter-rouge">split_size</code> is a float and has a default value, and <code class="language-plaintext highlighter-rouge">batch_size</code> and <code class="language-plaintext highlighter-rouge">seed</code> are integers with default values, as well. The expected output of the function is also shown and is a tuple composed of three dataloaders. At a glance, we immediately have more information about the function compared to if it did not have type hinting.</p>
+
+<p>From here, we look at the docstring, which is the documentation:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="sh">"""</span><span class="s">
+Create PyTorch DataLoaders for training, validation, and test sets.
+
+Parameters
+----------
+dataset : str
+    Name of the dataset to load.
+split_size : float, optional (default=0.1)
+    The fraction of data that will be split off for the validation/test set.
+batch_size : int, optional (default=64)
+    Number of samples per batch.
+seed : int, optional (default=42)
+    Random seed for reproducible splitting of the dataset.
+**kwargs
+    Additional keyword arguments.
+
+Returns
+-------
+train_loader : DataLoader
+    DataLoader for the training set, with shuffling enabled.
+val_loader : DataLoader
+    DataLoader for the validation set, without shuffling.
+test_loader : DataLoader
+    DataLoader for the test set, without shuffling.
+</span><span class="sh">"""</span>
+</code></pre></div></div>
+
+<p>Basic documentation is broken down into three parts: description, inputs, and outputs. One can get more sophisticated with the docstring if one wishes, but let’s keep it basic for now. The description of this function is short and to the point. The function creates PyTorch DataLoaders for training, validation, and test sets. The input section is given by <strong>“Parameters”</strong> and shows the data type and gives a short description of each input variable and whether or not they have a default value (find optional in docstring). Here, I don’t have arrays (or tensors), but if one does it is always good to include the expected shape of the array in the short description. The final section is given by <strong>“Returns”</strong> and displays the outputs of the function with the data type and short description of each output variable just like with the inputs.</p>
+
+<p>At this point we know exactly what the function does, the different data types involved, and the inputs and outputs of the function. Now, all that’s left is the code itself so that we can capture all the details of the function.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">data</span> <span class="o">=</span> <span class="nc">PreprocessDataset</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">split_size</span><span class="p">,</span> <span class="n">rand_seed</span><span class="o">=</span><span class="n">seed</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+<span class="nf">return </span><span class="p">(</span>
+    <span class="nc">DataLoader</span><span class="p">(</span><span class="nc">TensorDataset</span><span class="p">(</span><span class="n">data</span><span class="p">.</span><span class="n">X_train</span><span class="p">,</span> <span class="n">data</span><span class="p">.</span><span class="n">y_train</span><span class="p">),</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="bp">True</span><span class="p">),</span>
+    <span class="nc">DataLoader</span><span class="p">(</span><span class="nc">TensorDataset</span><span class="p">(</span><span class="n">data</span><span class="p">.</span><span class="n">X_val</span><span class="p">,</span> <span class="n">data</span><span class="p">.</span><span class="n">y_val</span><span class="p">),</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">),</span>
+    <span class="nc">DataLoader</span><span class="p">(</span><span class="nc">TensorDataset</span><span class="p">(</span><span class="n">data</span><span class="p">.</span><span class="n">X_test</span><span class="p">,</span> <span class="n">data</span><span class="p">.</span><span class="n">y_test</span><span class="p">),</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">)</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>Here, we see that we call <code class="language-plaintext highlighter-rouge">PreprocessDataset</code> with the dataset, which returns an object <code class="language-plaintext highlighter-rouge">data</code> with the training, validation, and test data as attributes. These attributes are then passed into <code class="language-plaintext highlighter-rouge">TensorDataset</code> and <code class="language-plaintext highlighter-rouge">DataLoader</code> like in my previous post. The order of the dataloaders in the output tuple are <code class="language-plaintext highlighter-rouge">(train, validation, test)</code>. Combining the header, docstring, and code gives us the full function:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">get_dataloaders</span><span class="p">(</span>
+    <span class="n">dataset</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">split_size</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.1</span><span class="p">,</span>
+    <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">64</span><span class="p">,</span>
+    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">42</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">DataLoader</span><span class="p">,</span> <span class="n">DataLoader</span><span class="p">,</span> <span class="n">DataLoader</span><span class="p">]:</span>
+    <span class="sh">"""</span><span class="s">
+    Create PyTorch DataLoaders for training, validation, and test sets.
+
+    Parameters
+    ----------
+    dataset : str
+        Name of the dataset to load.
+    split_size : float, optional (default=0.1)
+        The fraction of data that will be split off for the validation/test set.
+    batch_size : int, optional (default=64)
+        Number of samples per batch.
+    seed : int, optional (default=42)
+        Random seed for reproducible splitting of the dataset.
+    **kwargs
+        Additional keyword arguments.
+
+    Returns
+    -------
+    train_loader : DataLoader
+        DataLoader for the training set, with shuffling enabled.
+    val_loader : DataLoader
+        DataLoader for the validation set, without shuffling.
+    test_loader : DataLoader
+        DataLoader for the test set, without shuffling.
+    </span><span class="sh">"""</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="nc">PreprocessDataset</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">split_size</span><span class="p">,</span> <span class="n">rand_seed</span><span class="o">=</span><span class="n">seed</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="nf">return </span><span class="p">(</span>
+        <span class="nc">DataLoader</span><span class="p">(</span><span class="nc">TensorDataset</span><span class="p">(</span><span class="n">data</span><span class="p">.</span><span class="n">X_train</span><span class="p">,</span> <span class="n">data</span><span class="p">.</span><span class="n">y_train</span><span class="p">),</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="bp">True</span><span class="p">),</span>
+        <span class="nc">DataLoader</span><span class="p">(</span><span class="nc">TensorDataset</span><span class="p">(</span><span class="n">data</span><span class="p">.</span><span class="n">X_val</span><span class="p">,</span> <span class="n">data</span><span class="p">.</span><span class="n">y_val</span><span class="p">),</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">),</span>
+        <span class="nc">DataLoader</span><span class="p">(</span><span class="nc">TensorDataset</span><span class="p">(</span><span class="n">data</span><span class="p">.</span><span class="n">X_test</span><span class="p">,</span> <span class="n">data</span><span class="p">.</span><span class="n">y_test</span><span class="p">),</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">)</span>
+    <span class="p">)</span>
+</code></pre></div></div>
+
+<p>It’s definitely more verbose than if I just included the code portion, but there is now so much information embedded in it that will be useful when it comes time to use this function!</p>
+
+<p>Let’s now take a look at a subset of the class <code class="language-plaintext highlighter-rouge">PreprocessDataset</code>:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">PreprocessDataset</span><span class="p">(</span><span class="n">Dataset</span><span class="p">):</span>
+    <span class="sh">"""</span><span class="s">
+    Preprocess a dataset and provide train, validation, and test splits as PyTorch tensors.
+
+    Attributes
+    ----------
+    X_train : tc.Tensor
+        Training input features.
+    y_train : tc.Tensor
+        Training labels.
+    X_val : tc.Tensor
+        Validation input features.
+    y_val : tc.Tensor
+        Validation labels.
+    X_test : tc.Tensor
+        Test input features.
+    y_test : tc.Tensor
+        Test labels.
+
+    Parameters
+    ----------
+    dataset : str
+        Name of the dataset to load.
+        Options: </span><span class="sh">'</span><span class="s">MNIST</span><span class="sh">'</span><span class="s">, </span><span class="sh">'</span><span class="s">MEDMNIST</span><span class="sh">'</span><span class="s">
+    split_size : float, optional (default=0.1)
+        The fraction of data that will be split off for the validation/test set.
+    rand_seed : int, optional (default=42)
+        Random seed for reproducible splitting.
+    **kwargs
+        Additional keyword arguments.
+    </span><span class="sh">"""</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">,</span> 
+        <span class="n">dataset</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> 
+        <span class="n">split_size</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.1</span><span class="p">,</span> 
+        <span class="n">rand_seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">42</span><span class="p">,</span> 
+        <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">):</span>
+        <span class="n">loader</span> <span class="o">=</span> <span class="nc">LoadDatasets</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">X</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">loader</span><span class="p">.</span><span class="n">X</span> <span class="o">/</span> <span class="mf">255.0</span><span class="p">,</span> <span class="n">loader</span><span class="p">.</span><span class="n">y</span>
+        
+        <span class="n">X_train</span><span class="p">,</span> <span class="n">X_val</span><span class="p">,</span> <span class="n">y_train</span><span class="p">,</span> <span class="n">y_val</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">_split_dataset</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">split_size</span><span class="p">,</span> <span class="n">rand_seed</span><span class="p">)</span>
+        <span class="n">X_train</span><span class="p">,</span> <span class="n">X_test</span><span class="p">,</span> <span class="n">y_train</span><span class="p">,</span> <span class="n">y_test</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">_split_dataset</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">,</span> <span class="n">split_size</span><span class="p">,</span> <span class="n">rand_seed</span><span class="p">)</span>
+
+        <span class="n">self</span><span class="p">.</span><span class="n">X_train</span><span class="p">,</span> <span class="n">self</span><span class="p">.</span><span class="n">y_train</span> <span class="o">=</span> <span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">X_val</span><span class="p">,</span> <span class="n">self</span><span class="p">.</span><span class="n">y_val</span> <span class="o">=</span> <span class="n">X_val</span><span class="p">,</span> <span class="n">y_val</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">X_test</span><span class="p">,</span> <span class="n">self</span><span class="p">.</span><span class="n">y_test</span> <span class="o">=</span> <span class="n">X_test</span><span class="p">,</span> <span class="n">y_test</span>
+
+    <span class="k">def</span> <span class="nf">_split_dataset</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">,</span> 
+        <span class="n">X</span><span class="p">:</span> <span class="n">tc</span><span class="p">.</span><span class="n">Tensor</span><span class="p">,</span> 
+        <span class="n">y</span><span class="p">:</span> <span class="n">tc</span><span class="p">.</span><span class="n">Tensor</span><span class="p">,</span> 
+        <span class="n">split_size</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> 
+        <span class="n">rand_seed</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">tc</span><span class="p">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">tc</span><span class="p">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">tc</span><span class="p">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">tc</span><span class="p">.</span><span class="n">Tensor</span><span class="p">]:</span>
+        <span class="sh">"""</span><span class="s">
+        Split the dataset into train/test or train/validation subsets.
+
+        Parameters
+        ----------
+        X : tc.Tensor
+            Input features.
+        y : tc.Tensor
+            Target labels.
+        split_size : float
+            The fraction of data that will be split off for the validation/test set.
+        rand_seed : int
+            Random seed for reproducibility.
+
+        Returns
+        -------
+        X_train : tc.Tensor
+            Features of the first split.
+        X_test : tc.Tensor
+            Features of the second split.
+        y_train : tc.Tensor
+            Labels of the first split.
+        y_test : tc.Tensor
+            Labels of the second split.
+        </span><span class="sh">"""</span>
+        <span class="k">return</span> <span class="nf">train_test_split</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">test_size</span><span class="o">=</span><span class="n">split_size</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="n">rand_seed</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>The main docstring for a class documents the constructor. Then, each individual function has it’s own docstring. Looking at the constructor docstring, you will see that we have now included <strong>“Attributes”</strong>. These are instance attributes that belong to the class objects. This essentially means you can do things like:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">data</span> <span class="o">=</span> <span class="nc">PreprocessDataset</span><span class="p">(</span><span class="sh">'</span><span class="s">mnist</span><span class="sh">'</span><span class="p">)</span>
+<span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span> <span class="o">=</span> <span class="n">data</span><span class="p">.</span><span class="n">X_train</span><span class="p">,</span> <span class="n">data</span><span class="p">.</span><span class="n">y_train</span>
+</code></pre></div></div>
+
+<p>where data is the object and <code class="language-plaintext highlighter-rouge">X_train</code> and <code class="language-plaintext highlighter-rouge">y_train</code> are the attributes. In the case of this class, we have six instance attributes, which are our data sets. The docstring for these attributes is written in the same way as <strong>“Parameters”</strong> and <strong>“Returns”</strong>*. Note that the docstring says that the variable <code class="language-plaintext highlighter-rouge">datasets</code> can either be ‘MNIST’ or ‘MEDMNIST’. More about this later. One can also choose to give a brief summary for each method in the class in the constructor docstring, but I will not be doing this.</p>
+
+<p>In the constructor, we instance an object <code class="language-plaintext highlighter-rouge">loader</code> from the <code class="language-plaintext highlighter-rouge">LoadDatasets</code> class (which we will see in a bit). The instance attributes tied to the <code class="language-plaintext highlighter-rouge">loader</code> object are the <code class="language-plaintext highlighter-rouge">x</code> and <code class="language-plaintext highlighter-rouge">y</code> datasets. We then use these and call the method <code class="language-plaintext highlighter-rouge">_split_dataset</code>, which will now give us our train, validation, and test sets. The underscore in the method name indicates that this is meant to be an <em>internal</em> method that should not be accessed from outside the class. Python does not enforce this so it can still be called from outside the class if you so wish, but if you find yourself purposely writing underscores to call methods outside of the class constructor or other methods you may want to rethink your coding pipeline. For the last part of the constructor, we turn the different data sets into instance attributes. This is easily done by writing <code class="language-plaintext highlighter-rouge">self.X_train = X_train</code> for all variables you want to save.</p>
+
+<p>At this point you may be thinking to yourself, “This is so complicated!! Why are we doing all this if our previous code, without functions and classes, worked just fine?” As Yoda would say, “patience you must have, my young Padawan.” Let’s look at the last class, <code class="language-plaintext highlighter-rouge">LoadDatasets</code> and hopefully everything becomes clear.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">LoadDatasets</span><span class="p">():</span>
+    <span class="sh">"""</span><span class="s">
+    Load and return datasets as PyTorch tensors.
+
+    Attributes
+    ----------
+    dataset : str
+        Name of the dataset to load (e.g., </span><span class="sh">'</span><span class="s">MNIST</span><span class="sh">'</span><span class="s">, </span><span class="sh">'</span><span class="s">MEDMNIST</span><span class="sh">'</span><span class="s">).
+    X : tc.Tensor
+        Input features of the dataset as a PyTorch tensor.
+        shape: (num_samples, channels, height, width)
+    y : tc.Tensor
+        Target labels as a PyTorch tensor.
+
+    Parameters
+    ----------
+    dataset : str
+        The name of the dataset to load.
+        Options: </span><span class="sh">'</span><span class="s">MNIST</span><span class="sh">'</span><span class="s"> or </span><span class="sh">'</span><span class="s">MEDMNIST</span><span class="sh">'</span><span class="s">
+    **kwargs
+        Additional keyword arguments passed to the specific dataset loader methods.
+
+    Raises
+    ------
+    ValueError
+        If an unsupported dataset name is provided.
+    </span><span class="sh">"""</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">dataset</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">dataset</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">.</span><span class="nf">upper</span><span class="p">()</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">loaders</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="sh">'</span><span class="s">MNIST</span><span class="sh">'</span><span class="p">:</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">self</span><span class="p">.</span><span class="nf">load_mnist</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">),</span>
+            <span class="sh">'</span><span class="s">MEDMNIST</span><span class="sh">'</span><span class="p">:</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">self</span><span class="p">.</span><span class="nf">load_medmnist</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">),</span>
+        <span class="p">}</span>
+
+        <span class="k">if</span> <span class="n">self</span><span class="p">.</span><span class="n">dataset</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">self</span><span class="p">.</span><span class="n">loaders</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="nc">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="sh">'</span><span class="s">Dataset not supported -&gt; </span><span class="si">{</span><span class="n">dataset</span><span class="si">}</span><span class="s">. </span><span class="sh">'</span>
+                             <span class="sa">f</span><span class="sh">'</span><span class="s">Available: </span><span class="si">{</span><span class="nf">list</span><span class="p">(</span><span class="n">self</span><span class="p">.</span><span class="n">loaders</span><span class="p">.</span><span class="nf">keys</span><span class="p">())</span><span class="si">}</span><span class="sh">'</span><span class="p">)</span>
+
+        <span class="n">self</span><span class="p">.</span><span class="n">X</span><span class="p">,</span> <span class="n">self</span><span class="p">.</span><span class="n">y</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">loaders</span><span class="p">[</span><span class="n">self</span><span class="p">.</span><span class="n">dataset</span><span class="p">]()</span>
+        
+    <span class="k">def</span> <span class="nf">load_mnist</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">version</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">tc</span><span class="p">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">tc</span><span class="p">.</span><span class="n">Tensor</span><span class="p">]:</span>
+        <span class="sh">"""</span><span class="s">
+        Load the MNIST dataset and convert it to PyTorch tensors.
+
+        Parameters
+        ----------
+        version : int, optional (default=1)
+            The version of the MNIST dataset from OpenML.
+
+        Returns
+        -------
+        X : tc.Tensor
+            MNIST images as a float32 tensor normalized to [0, 1].
+            Shape: (num_samples, 1, 28, 28)
+        y : tc.Tensor
+            MNIST labels as int64 tensor.
+            Shape: (num_samples,)
+        </span><span class="sh">"""</span>
+        <span class="kn">from</span> <span class="n">sklearn.datasets</span> <span class="kn">import</span> <span class="n">fetch_openml</span>
+        
+        <span class="n">X</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="nf">fetch_openml</span><span class="p">(</span><span class="sh">'</span><span class="s">mnist_784</span><span class="sh">'</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">,</span> <span class="n">return_X_y</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">as_frame</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+        <span class="n">X</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">tensor</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">tc</span><span class="p">.</span><span class="n">float32</span><span class="p">)</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">from_numpy</span><span class="p">(</span><span class="n">y</span><span class="p">.</span><span class="nf">astype</span><span class="p">(</span><span class="sh">'</span><span class="s">int64</span><span class="sh">'</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">X</span><span class="p">.</span><span class="nf">view</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">28</span><span class="p">,</span> <span class="mi">28</span><span class="p">),</span> <span class="n">y</span>
+        
+    <span class="k">def</span> <span class="nf">load_medmnist</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="sh">'</span><span class="s">bloodmnist</span><span class="sh">'</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">tc</span><span class="p">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">tc</span><span class="p">.</span><span class="n">Tensor</span><span class="p">]:</span>
+        <span class="sh">"""</span><span class="s">
+        Load a MedMNIST dataset and convert it to PyTorch tensors.
+
+        Parameters
+        ----------
+        flag : str, optional (default=</span><span class="sh">'</span><span class="s">bloodmnist</span><span class="sh">'</span><span class="s">)
+            Specifies which MedMNIST dataset to load.
+            Must be one of the keys in `medmnist.INFO`.
+
+        Returns
+        -------
+        X : tc.Tensor
+            MedMNIST images as a float32 tensor normalized to [0, 1].
+            Shape: (num_samples, channels, height, width)
+        y : tc.Tensor
+            MedMNIST labels as long tensors.
+            Shape: (num_samples,)
+
+        Raises
+        ------
+        ValueError
+            If the specified `flag` does not correspond to a valid MedMNIST dataset.
+        </span><span class="sh">"""</span>
+        <span class="kn">import</span> <span class="n">medmnist</span>
+        <span class="kn">from</span> <span class="n">medmnist</span> <span class="kn">import</span> <span class="n">INFO</span>
+        
+        <span class="k">if</span> <span class="n">flag</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">INFO</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="nc">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="sh">'</span><span class="s">Invalid MedMNIST flag -&gt; </span><span class="si">{</span><span class="n">flag</span><span class="si">}</span><span class="s">. </span><span class="sh">'</span>
+                             <span class="sa">f</span><span class="sh">'</span><span class="s">Available datasets: </span><span class="si">{</span><span class="nf">list</span><span class="p">(</span><span class="n">INFO</span><span class="p">.</span><span class="nf">keys</span><span class="p">())</span><span class="si">}</span><span class="sh">"'</span><span class="p">)</span>
+
+        <span class="nf">print</span><span class="p">(</span><span class="n">INFO</span><span class="p">[</span><span class="n">flag</span><span class="p">][</span><span class="sh">'</span><span class="s">label</span><span class="sh">'</span><span class="p">])</span>
+        <span class="n">DataClass</span> <span class="o">=</span> <span class="nf">getattr</span><span class="p">(</span><span class="n">medmnist</span><span class="p">,</span> <span class="n">INFO</span><span class="p">[</span><span class="n">flag</span><span class="p">][</span><span class="sh">'</span><span class="s">python_class</span><span class="sh">'</span><span class="p">])</span>
+        
+        <span class="n">train_ds</span> <span class="o">=</span> <span class="nc">DataClass</span><span class="p">(</span><span class="n">split</span><span class="o">=</span><span class="sh">'</span><span class="s">train</span><span class="sh">'</span><span class="p">,</span> <span class="n">download</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">val_ds</span> <span class="o">=</span> <span class="nc">DataClass</span><span class="p">(</span><span class="n">split</span><span class="o">=</span><span class="sh">'</span><span class="s">val</span><span class="sh">'</span><span class="p">,</span> <span class="n">download</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">test_ds</span> <span class="o">=</span> <span class="nc">DataClass</span><span class="p">(</span><span class="n">split</span><span class="o">=</span><span class="sh">'</span><span class="s">test</span><span class="sh">'</span><span class="p">,</span> <span class="n">download</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        
+        <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">concatenate</span><span class="p">([</span><span class="n">train_ds</span><span class="p">.</span><span class="n">imgs</span><span class="p">,</span> <span class="n">val_ds</span><span class="p">.</span><span class="n">imgs</span><span class="p">,</span> <span class="n">test_ds</span><span class="p">.</span><span class="n">imgs</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">concatenate</span><span class="p">([</span><span class="n">train_ds</span><span class="p">.</span><span class="n">labels</span><span class="p">,</span> <span class="n">val_ds</span><span class="p">.</span><span class="n">labels</span><span class="p">,</span> <span class="n">test_ds</span><span class="p">.</span><span class="n">labels</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        
+        <span class="n">X</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">tensor</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">tc</span><span class="p">.</span><span class="n">float32</span><span class="p">)</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">tensor</span><span class="p">(</span><span class="n">y</span><span class="p">).</span><span class="nf">long</span><span class="p">().</span><span class="nf">squeeze</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">X</span><span class="p">.</span><span class="nf">permute</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">y</span>
+</code></pre></div></div>
+
+<p>In the docstring for this class I have included yet <em>another</em> section, <strong>“Raises”</strong>. By seeing this we know that somewhere in the constructor there will be a piece of code that will potentially raise an error if something is wrong. The docstring says that this will happen if an unsupported dataset name is provided. Aha! So If I pass in an incorrect string or a string that does not match a known dataset in the class an error will be raised.</p>
+
+<p>Looking at the constructor, we see that the dataset string is capitalized. This is to prevent case sensitivity raising an error. The dataset name is passed into a dictionary that calls the method that corresponds to the dataset being asked for. We also see that the methods are called via lambda function. The reason is so that if we have parameters that we need to pass into the dataset methods we can do it as a keyword argument (a.k.a. kwargs). For example, take <a href="https://medmnist.com/" title="MEDMNIST-docs">MEDMNIST</a>, which is a library of medical datasets. An input to the method is the specific MEDMNIST dataset that we want. In this case, the default option is “bloodmnist”. If instead we wanted ChestMNIST, then we pass in “chestmnist” as a keyword argument into <code class="language-plaintext highlighter-rouge">get_dataloaders</code>. If no keyword arguments are passed in, then the lambda function is treated as if it was a regular method call.</p>
+
+<p>So let’s review the function and classes used for obtaining the dataloaders. The <code class="language-plaintext highlighter-rouge">get_dataloaders</code> function calls the <code class="language-plaintext highlighter-rouge">PreprocessDataset</code> class. This class is solely used for grabbing the already loaded features and targets, normalizing, and splitting them into train, validation, and test sets. The <code class="language-plaintext highlighter-rouge">PreprocessDataset</code> class calls the <code class="language-plaintext highlighter-rouge">LoadDatasets</code> class, which is solely used for loading the features and targets from their respective Python package. The classes <strong>do not</strong> care about the inner workings of each other. <code class="language-plaintext highlighter-rouge">PreprocessDataset</code> only cares that there is a class with the feature and target variables as attributes. On the other hand, <code class="language-plaintext highlighter-rouge">LoadDatasets</code> can be called independently from everything else if one only wants the feature and target variables. This way of modularizing code helps once projects start getting big and pipelines get complicated. It keeps everything in such a way so that you can swap out functions or classes with ease. You don’t have everything tangled up together, which can result in headaches when making changes.</p>
+
+<p>Another cool thing is that adding datasets to <code class="language-plaintext highlighter-rouge">LoadDatasets</code> is a breeze. All you have to do is write a function in the class that outputs the feature and target variables with the shape $\text{X.shape} = (\text{num_samples}, \text{channels}, \text{height}, \text{width})$ and $\text{y.shape} = (\text{num_samples},)$ and add the dataset to the dictionary in the constructor. From there, getting the dataloaders for this new dataset is as easy as calling <code class="language-plaintext highlighter-rouge">get_dataloaders</code> and passing in the appropriate name. You don’t have to copy over you preprocessing pipeline or the <code class="language-plaintext highlighter-rouge">train_test_split</code> function.</p>
+
+<p>I won’t go over the functions <code class="language-plaintext highlighter-rouge">train_model</code> and <code class="language-plaintext highlighter-rouge">evaluate_model</code> since they are pretty self-explanatory and the bulk of it was covered last week. What I do want to show are the train, validation, and test results:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Epoch</span> <span class="mi">1</span><span class="p">,</span> <span class="n">Train</span> <span class="n">Accuracy</span><span class="p">:</span> <span class="mf">0.88814815</span><span class="p">,</span> <span class="n">Validation</span> <span class="n">Accuracy</span><span class="p">:</span> <span class="mf">0.94385714</span>
+<span class="n">Epoch</span> <span class="mi">2</span><span class="p">,</span> <span class="n">Train</span> <span class="n">Accuracy</span><span class="p">:</span> <span class="mf">0.95839506</span><span class="p">,</span> <span class="n">Validation</span> <span class="n">Accuracy</span><span class="p">:</span> <span class="mf">0.96385714</span>
+<span class="n">Epoch</span> <span class="mi">3</span><span class="p">,</span> <span class="n">Train</span> <span class="n">Accuracy</span><span class="p">:</span> <span class="mf">0.97007055</span><span class="p">,</span> <span class="n">Validation</span> <span class="n">Accuracy</span><span class="p">:</span> <span class="mf">0.96928571</span>
+<span class="n">Test</span> <span class="n">Accuracy</span><span class="p">:</span> <span class="mf">0.97190476</span>
+</code></pre></div></div>
+
+<p>We note that they are the same as last week! This means that our code refactoring did not fundamentally change anything in the model, which is great validation that we did not introduce a bug into the code. The misclassified images are also the same:</p>
+
+<p><img src="/assets/images/build_cnn/misclassified_images_mnist_pipeline_code.png" alt="mnist_misclassified" /></p>
+
+<p>which is to be expected since we are seeding all the random number generators. All is well. The cool thing is that all the training and evaluation code is agnostic to the dataset, which means that you can use it on other datasets with very minimal tweaks!</p>
+
+<p>The functions used to produce the plots are also written in such a way as to allow flexibility when using different datasets. I will only go over one of the functions:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">plot_images</span><span class="p">(</span>
+    <span class="n">loader</span><span class="p">:</span> <span class="n">tc</span><span class="p">.</span><span class="n">utils</span><span class="p">.</span><span class="n">data</span><span class="p">.</span><span class="n">DataLoader</span><span class="p">,</span> 
+    <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> 
+    <span class="n">dpi</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> 
+    <span class="n">data</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">size</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">],</span> 
+    <span class="n">figsize</span><span class="p">:</span> <span class="n">Tuple</span> <span class="o">=</span> <span class="p">(</span><span class="mi">14</span><span class="p">,</span> <span class="mi">6</span><span class="p">),</span>
+    <span class="n">cmap</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="bp">None</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="bp">None</span><span class="p">:</span>
+    <span class="sh">"""</span><span class="s">
+    Plots a subset of the dataset images.
+
+    Parameters
+    ----------
+    loader : tc.utils.data.DataLoader
+        DataLoader for the training set.
+    path : str
+        String to the directory where the plot is saved.
+    dpi : int
+        Dots per inch.
+        A higher dpi results in a sharper image.
+    data : str
+        The name of the dataset being plotted.
+        This is used to label the plot when saving to directory.
+    size : list, optional (default=[2, 5])
+        Specifies the number of rows and columns.
+    figsize : Tuple, optional (default=[14, 6])
+        Specifies the figure size.
+    cmap : str, optional (default=None)
+        Colormap for 2D images.
+    </span><span class="sh">"""</span>
+    <span class="n">images</span><span class="p">,</span> <span class="n">labels</span> <span class="o">=</span> <span class="nf">next</span><span class="p">(</span><span class="nf">iter</span><span class="p">(</span><span class="n">loader</span><span class="p">))</span>
+
+    <span class="n">fig</span><span class="p">,</span> <span class="n">axes</span> <span class="o">=</span> <span class="n">plt</span><span class="p">.</span><span class="nf">subplots</span><span class="p">(</span><span class="n">size</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">size</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">figsize</span><span class="o">=</span><span class="n">figsize</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">ax</span> <span class="ow">in</span> <span class="nf">enumerate</span><span class="p">(</span><span class="n">axes</span><span class="p">.</span><span class="n">flat</span><span class="p">):</span>
+        <span class="n">img</span> <span class="o">=</span> <span class="n">images</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="nf">permute</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">img</span><span class="p">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">img</span> <span class="o">=</span> <span class="n">img</span><span class="p">.</span><span class="nf">squeeze</span><span class="p">()</span>
+            <span class="n">cmap</span> <span class="o">=</span> <span class="sh">'</span><span class="s">gray</span><span class="sh">'</span>
+            
+        <span class="n">ax</span><span class="p">.</span><span class="nf">imshow</span><span class="p">(</span><span class="n">img</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="n">cmap</span><span class="p">)</span>
+        <span class="n">ax</span><span class="p">.</span><span class="nf">set_title</span><span class="p">(</span><span class="sa">f</span><span class="sh">"</span><span class="s">Label: </span><span class="si">{</span><span class="n">labels</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="nf">item</span><span class="p">()</span><span class="si">}</span><span class="sh">"</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">16</span><span class="p">)</span>
+        <span class="n">ax</span><span class="p">.</span><span class="nf">axis</span><span class="p">(</span><span class="sh">'</span><span class="s">off</span><span class="sh">'</span><span class="p">)</span>
+    <span class="n">plt</span><span class="p">.</span><span class="nf">show</span><span class="p">();</span>
+    
+    <span class="n">fig</span><span class="p">.</span><span class="nf">set_constrained_layout_pads</span><span class="p">(</span><span class="n">w_pad</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">h_pad</span><span class="o">=</span><span class="mf">0.01</span><span class="p">)</span>
+    <span class="n">fig</span><span class="p">.</span><span class="nf">savefig</span><span class="p">(</span><span class="n">path</span> <span class="o">+</span> <span class="sa">f</span><span class="sh">'</span><span class="s">example_image_</span><span class="si">{</span><span class="n">data</span><span class="si">}</span><span class="s">.png</span><span class="sh">'</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="sh">'</span><span class="s">tight</span><span class="sh">'</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="n">dpi</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>I won’t belabor the type hinting and docstring, but I do want to point out something we didn’t seen in the previous examples, which is <code class="language-plaintext highlighter-rouge">loader: tc.utils.data.DataLoader</code>. This way of type hinting happens when the object being passed into the function is not some straighforward data type like an integer or float. In this case, you can simply write what one would write if they want to import that object. Here, I have already imported <code class="language-plaintext highlighter-rouge">torch</code> as <code class="language-plaintext highlighter-rouge">tc</code> so I simply need to complete the path to import <code class="language-plaintext highlighter-rouge">DataLoader</code> and use that as the type hint.</p>
+
+<p>Let’s jump to the code portion since we have pretty much already discussed type hinting and docstrings. The function is written in such a way as to allow someone to pass in grayscale or color images. This can be seen from the following line: <code class="language-plaintext highlighter-rouge">if img.shape[-1] == 1:</code>. This if-statement checks if the image is grayscale, and, if so, it squeezes the single channel input portion so that a 2D image can be plotted. If the last element size is not $1$, there is no squeezing and the plots are shown in color with the $3$ input channels. The final line saves the plot to a folder and appropriately labels it based on the data that was passed in.</p>
+
+<p>Summary:<br />
+So we’ve gone over quite a bit in this blog post. We first discussed how to save parameters in a <code class="language-plaintext highlighter-rouge">yaml</code> file, how to import them into the workspace, and how to turn them into attributes of an object. We went over type hinting and writing docstrings for functions and classes, as well as implementing a machine learning pipeline for easier project deployment. To be sure we did not introduce any errors in the code, we ran the same example as in the previous week and got the same outputs, which means our refactoring did not introduce any bugs. Overall, we’ve managed to take a specific problem and create a pipeline that can then be applied to a wide variety of datasets.</p>
+
+<p>The code presented and plots displayed in the Convolutional neural network with the MNIST dataset posts can be found on my Github under the <a href="https://github.com/AJG91/build-cnn" title="build-cnn-repo">build-cnn</a> repo <a class="citation" href="#Garcia2025BuildCNN">[1]</a>. Feel free to reach out if you have any questions about what we covered this week. I will take a break the next few weeks and come back with hyperparameter tuning and model debugging. Stay tuned!</p>
+
+<ol class="bibliography"><li><span id="Garcia2025BuildCNN">[1] Alberto J. Garcia, <i>Build CNN</i>, 2025. Available at: https://github.com/AJG91/build-cnn.</span></li></ol>
+<p><a href="/" class="btn">⬅ Back to Home</a></p>
+
+        
+      </section>
+
+      <footer class="page__meta">
+        
+        
+
+
+        
+
+  <p class="page__date"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Updated:</strong> <time class="dt-published" datetime="2025-09-14T00:00:00-07:00">September 14, 2025</time></p>
+
+      </footer>
+
+      
+
+      
+  <nav class="pagination">
+    
+      <a href="/posts/machine-learning/convolutional-neural-network-with-mnist-dataset/" class="pagination--pager" title="Convolutional neural networks: MNIST dataset">Previous</a>
+    
+    
+      <a href="/posts/machine-learning/multi-layer-perceptron-data-description/" class="pagination--pager" title="Multi-layer perceptron: California housing dataset">Next</a>
+    
+  </nav>
+
+
+    </div>
+
+    
+  </article>
+
+  
+  
+</div>
+
+      
+    </div>
+
+    
+
+    <div id="footer" class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        
+
+<div class="page__footer-follow">
+  <ul class="social-icons">
+    
+
+    
+
+    
+      <li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+    
+  </ul>
+</div>
+
+
+<div class="page__footer-copyright">&copy; 2026 <a href="https://ajg91.github.io/">AJG&#39;s Homepage</a>. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/jekyll-themes/minimal-mistakes/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+
+  </body>
+</html>

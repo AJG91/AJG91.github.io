@@ -1,0 +1,636 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.27.3 by Michael Rose
+  Copyright 2013-2025 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE
+-->
+
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin _includes/seo.html --><title>Natural language models: GPT-2 causal text generator - AJG’s Homepage</title>
+<meta name="description" content="November 30, 2025  This week we will be using a decoder to generate movie reviews. First, I will walk through the fine-tuning process. Then, I will show how well the decoder autocompletes movie reviews. As a note, the fine-tuning process is almost identical to fine-tuning an encoder, so there will be a lot of similarities between this and the previous post.  The foundation to text generation is masked self-attention and autoregressive training. Let’s assume we have a sequence of tokens $T_1, T_2, \ldots, T_n$. Self-attention lets token $T_i$ see all tokens in the sequence $\sum_{k=1}^{n} T_k$. This is bidirectional self-attention (unmasked), which we discussed last post. For causal language models, this won’t work since we can only use the past tokens to predict the next. This is where masked self-attention comes into play. With masked self-attention, the learning is unidirectional (left-to-right), which means that token $T_i$ can also see all tokens in the sequence $\sum_{k=1}^{i} T_k$. The reason for using the word ‘‘masked’’ is that a mask is applied to the attention matrix to mask all future tokens converting the matrix into a lower triangular matrix. Autoregressive training is a training objective where the model predicts token $T_i$ using all previous tokens $T_1, T_2, \ldots, T_{i-1}$ by minimizing a log-likelihood objective function. These two concepts allow the model to learn sequential dependencies and apply this to text generation  [8,8,8].  The model we will be fine-tuning it GPT-2 (Generative Pretrained Transformer 2). This is a transformer-based neural network that has been trained on a massive amount of text found on the internet. This model is used to generate the next word in a sequence in a coherent and contextual way. As previously mentioned, the original model was developed by OpenAI in 2019 and a smaller version (~124M parameters) was made available on the Hugging Face website [8], which is the one we will be using. Our job is to fine-tune it to the specific problem we are considering, which is to generate movie reviews based on sentiment. We are not generating sentiment, but outputting a continuation of an input text that contains some form of sentiment.  The first step is defining our parameters. Like previously seen, our parameters will be saved in a .yaml file and we will use SimpleNamespace as an easy way to store and access these parameters. Here are the parameters we will be using:  {   &quot;model_name&quot;: &quot;gpt2&quot;,   &quot;dataset&quot;: &quot;imdb&quot;,   &quot;seed&quot;: 42,   &quot;dpi&quot;: 400,   &quot;max_token_length&quot;: 128,   &quot;train_size&quot;: 3000,   &quot;val_size&quot;: 500,   &quot;lr&quot;: 2e-05,   &quot;warmup_ratio&quot;: 0.1,   &quot;epochs&quot;: 3,   &quot;train_batch_size&quot;: 4,   &quot;eval_batch_size&quot;: 4,   &quot;strategy&quot;: &quot;epoch&quot;,   &quot;fig_path&quot;: &quot;../outputs/&quot;,   &quot;res_path&quot;: &quot;../results/&quot; }   From here, we load the dataset, model, and tokenizer. This is done as follows:  dataset = load_dataset(cfg.dataset)  inst = CausalTextGeneration(cfg.model_name) dataset = inst.clean_data(dataset) data_tokenized = inst.tokenize_dataset(dataset, cfg.max_token_length) data_collator = inst.data_collator()   We have wrapped all the necessary code in the CausalTextGeneration custom class. In this class, we can find methods to import the dataset, clean the dataset, initialize the model, tokenize the dataset, etc. This class is defined as follows (I will omit the docstrings and unused methods for brevity. See the file model.py for more information):  class CausalTextGeneration():     def __init__(         self,          model_name: str     ):         self.model_name = model_name         self.device = get_device()         self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(model_name)         self.tokenizer.pad_token = self.tokenizer.eos_token      def clean_data(         self,         dataset: Union[Dataset, DatasetDict],         cutoff: int = 2000         ) -&gt; Union[Dataset, DatasetDict]:         dataset = dataset.filter(lambda x: len(x[&quot;text&quot;].strip()) &gt; 0)         dataset = dataset.filter(lambda x: len(x[&quot;text&quot;]) &lt; cutoff)         return dataset      def tokenize_text(         self,          prompt: str,          padding: Union[bool, str] = True,          truncation: Union[bool, str] = True     ) -&gt; dict[str, tc.Tensor]:         inputs = self.tokenizer(             prompt,             padding=padding,             truncation=truncation,             return_tensors=&quot;pt&quot;         )         return to_device(inputs, self.device)          def tokenize_dataset(         self,          dataset: Union[Dataset, DatasetDict],          max_token_length: int     ) -&gt; Union[Dataset, DatasetDict]:         def tokenize_fn(batch):             tokenized = self.tokenizer(                 batch[&quot;text&quot;],                 padding=False,                 truncation=True,                 max_length=max_token_length             )             return tokenized          data_tokenized = dataset.map(             tokenize_fn,             batched=True,             remove_columns=[&quot;text&quot;, &quot;label&quot;],         )         return data_tokenized          def data_collator(         self,          mlm: bool = False     ) -&gt; DataCollatorForLanguageModeling:         data_collator = DataCollatorForLanguageModeling(             tokenizer=self.tokenizer,             mlm=mlm         )         return data_collator      def load_model(         self,     ) -&gt; PreTrainedModel:         model = AutoModelForCausalLM.from_pretrained(             self.model_name,         ).to(self.device)         model.config.pad_token_id = self.tokenizer.pad_token_id         return model          def evaluate_model(         self,         prompt: Union[list[str], str],         model: PreTrainedModel,         max_new_tokens: int = 25,         do_sample: bool = True,         top_k: int = 25,         top_p: float = 0.95,         temperature: float = 0.7,         repetition_penalty: Union[int, float] = 1.1     ) -&gt; Union[tc.Tensor, GenerateOutput]:         inputs = self.tokenize_text(prompt)          model.eval()         with tc.no_grad():             outputs = model.generate(                 **inputs,                  max_new_tokens=max_new_tokens,                 do_sample=do_sample,                 top_k=top_k,                 top_p=top_p,                 temperature=temperature,                 repetition_penalty=repetition_penalty,                 pad_token_id=self.tokenizer.pad_token_id             )         return outputs   I will omit the explanation of each method since most of these were explained in the previous post, but I will go over key differences. For decoders, we will use the Hugging Face class AutoModelForCausalLM since we are now dealing with a causal model, which means that the model depends on the previous information to generate the next word. This is the key difference between encoders and decoders. The next key difference is found in the method tokenize_dataset. We had previously made the default for padding True, but for decoders we make it False. The reason has to do with the length of the reviews. Since we are setting the max token length to be $128$ (see parameters), no padding will actually occur since this length is less than the total length of a review. Hence the token vector will be fully composed of tokens with no blank space and padding would be useless.  We are also now using a pre-defined data collator initialized in the method data_collator, where we import the Hugging Face class DataCollatorForLanguageModeling. This collator automatically takes care of padding (if needed) and masking (as well as other things) for language models. For a causal languange model in particular, we set mlm=False, which tells the collator that the model should be trying to predict the next token. If true, the collator would follow BERT’s stragety of data preparation. There is actually a Hugging Face class called DataCollatorForCausalLM, which is used primarily for text generation models, but I am working with an older version of the transformers library where it is not yet available.  Another difference is that we have now included an evaluate_model method. As one can infer, it is used to evaluate the model using new, unseen data, but now we have different parameters to consider. Let’s go over each individual parameter in model.generate():     max_new_tokens = $25$            This is the total amount of tokens that will be used in the text generation.           do_sample = True            Tells model to sample from probability distribution instead of picking the highest-probability token.       do_sample = False $\rightarrow$ deterministic.       do_sample = True $\rightarrow$ random sampling.           top_k = $25$            Sorts logits, keeps top $25$ most probable tokens, and draws samples from them.       Lower k $\rightarrow$ more deterministic.       Higher k $\rightarrow$ more random.           top_p = $0.95$            Keeps the smallest set of tokens whose cumulative probability $\ge 0.95$.       Can be used in conjunction with top_k, which amounts to picking tokens that intersect with these two conditions.       Helps adapt to uncertainty by keeping the token selection dynamic since it is based on a probability mass as opposed to a fixed number.           temperature = $0.7$            Scales softmax distribution before sampling.       Lower T $\rightarrow$ more deterministic.       Higher T $\rightarrow$ more random.           repetition_penalty = $1.1$            Discourages the same token from reappearing by scaling all logits that have already been used by some value $&gt; 1$.       This occurs when there is a lack of sampling diversity, which causes reinforcement of certain phrases/tokens.           Now, we look at the TrainingArguments and Trainer classes:  training_args = TrainingArguments(     output_dir=cfg.res_path,     overwrite_output_dir=True,     report_to=&quot;none&quot;,     eval_strategy=cfg.strategy,     save_strategy=cfg.strategy,     logging_strategy= cfg.strategy,     learning_rate=cfg.lr,     per_device_train_batch_size=cfg.train_batch_size,     per_device_eval_batch_size=cfg.eval_batch_size,     num_train_epochs=cfg.epochs,     warmup_ratio=cfg.warmup_ratio,     seed=cfg.seed )   The TrainingArguments parameters are mostly the same as for the encoder. One big difference is the parameter warmup_ratio. This parameter controls the learning rate at the start of the training by slowly ramping up the learning rate. It initially starts the learning rate at $0$, then linearly increases it until it reaches the max learning rate (chosen by user) and decays from there. The warmup length is given in steps, which is taken by scaling the total steps by the warmup ratio. The purpose of this parameter is to gradually change the model weights at the start of training since the weights are not yet stable.  The main body of the Trainer is essentially the same as before, expect the last two lines are replaced by the data collator. In this case, we choose to not pass in any metrics since we will be calculating the perplexity of the evaluation loss (explained later). The Trainer looks like the following:  trainer = Trainer(     model=model,     args=training_args,     train_dataset=data_tokenized[&quot;train&quot;].shuffle(seed=cfg.seed).select(range(cfg.train_size)),     eval_dataset=data_tokenized[&quot;test&quot;].shuffle(seed=cfg.seed).select(range(cfg.val_size)),     data_collator=data_collator )   As before, we pass in the model, the training arguments, the different datasets, and the collator (new!) into the trainer. These datasets are huge so we shuffe, seed, and select a subset of the train ($3000$ samples) and test ($500$ samples) set as a demonstration. In actual fine-tuning, it’s essential to use all the available data. Now, all we have to do is run trainer.train() and the model begins to train.  For our example, we get the following metrics:  Epoch 	Training Loss   Validation Loss   1 	   3.870400 	    3.709818   2 	   3.685000 	    3.707382   3 	   3.607300 	    3.709974   While the training loss is decreasing, it is not decreasing by much. On the other hand, the validation loss starts to decrease then slightly increases. While this may seem troubling at first glance, it is actually not that bad. GPT-2 is actually a very large model, which means that fine-tuning will only slightly decrease the loss. Not to mention, we are only fine-tuning with $3000$ samples. This is such a small sample size in comparison to the data used to train the model that such a small step size in training loss is to be expected. This also partly explains the increase in validation loss during the last epoch since the sample size for the validation dataset is $500$. The change in loss is in the hundredth decimal place, which for most applications can be attributed to small fluctuations (a.k.a. noise). There is a possibility of slight overfitting, but I don’t think there is enough proof. More tests need to be considered with a larger sample size to determine if the model is indeed overfitting.  We can also calculate the perplexity to determine how well the model learned. Perplexity is a way to measure how well a model can predict the next token [8]. It is calculated as the exponent of the average cross-entropy loss. In other words,  [\mathrm{perplexity} = e^{\mathrm{loss}}.]  The lower the perplexity, the less token ‘‘choices’’ the model has, hence the more accurate the model prediction. The higher the perplexity, the more token ‘‘choices’’, the more uncertain the model is of its predictions. Ideally, the perplexity has an exponential decay behavior as the model learns. Here is a plot of the perplexity for the training and validation phases:    From the plot, we see that the training perplexity does indeed follow an exponential decay behavior. On the other hand, the validation perplexity increases, which is attributed to what was already mentioned above. Note that steps is the global steps taken during the fine-tuning of the model.  Now that our model is fine-tuned, let’s see how well it can autocomplete movie reviews. Here are beginning of reviews that I created:  reviews = [     &quot;This movie was terrible. The acting was mediocre.&quot;,     &quot;I highly recommend this movie to everyone.&quot;,     &quot;This was a great movie. I wish it was longer.&quot;,     &quot;I do not recommend this movie. The actors are terrible.&quot;, ]   In this example, I chose to make the sentiment obvious to see how well the model could understand this and expand on the review. The code that calls the evaluate_model method and prints out the generated text is:  outputs = inst.evaluate_model(reviews, model)  for i, seq in enumerate(outputs):     print(f&quot;Seq. {i + 1}:&quot;)     print(f&quot;{inst.tokenizer.decode(seq, skip_special_tokens=True)}&quot;)     print(&quot;\n&quot;)   Here are the outputs of the model:  Seq. 1: This movie was terrible. The acting was mediocre.It is a very good horror film, but I think it will appeal to many people as well (especially the young ones).  Seq. 2: I highly recommend this movie to everyone.  If you want a good laugh, go with the story and characters of The Sopranos. If not then read  Seq. 3: This was a great movie. I wish it was longer. It is not as good as the first one, but this time you can see why people are so angry and upset about what  Seq. 4: I do not recommend this movie. The actors are terrible. They had an awful time with the acting in it, and I have yet to see a single scene where they did anything other   Overall, the expanded reviews generated by the model seem to somewhat fit the sentiment of the input reviews. There are no issues with Sequence 1 and 4, but we should analyze the other two. Sequence 2 seems to deviate from the inital sentiment. It goes on to talk about The Sopranos even though the input text did not mention anything about that show. Sequence 3 seems to not quite understand what sentiment it is supposed to show, but this is because the sentence ‘‘I wish it was longer.’’ can be interpreted as a negative sentiment even though the first sentence has a positive sentiment. So the output seems to make sense.  Let’s try some harder reviews.  reviews = [     &quot;Wow! I was suprised by how much &quot;,     &quot;This film was such a surprise. &quot;,     &quot;I never thought I would &quot;,     &quot;This movie makes me want to yell &quot; ]   As you can tell, these reviews are more difficult to determine sentiment from. They are ambiguous as to whether they think the movie was good or bad. Let’s see how well the model categorizes them:  Seq. 1: Wow! I was suprised by how much vernacular this film used to be, and also the way it kept me guessing. For starters: How would you like a  Seq. 2: This film was such a surprise. A beautiful movie with some great characters, the director and actors had wonderful chemistry to create this story that is very entertaining - even  Seq. 3: I never thought I would This movie was so bad, but it is. It&#39;s not that BAD though! Just an awful story with no redeeming  Seq. 4: This movie makes me want to yell The Devil is a Bad Idea. It&#39;s just terrible, it has no suspense and the plot doesn&#39;t move at all!   In this case, the model does a decent job in generating reviews with varying sentiment. This may be because the second batch gave the model more flexibility in producing reviews that kept to one sentiment, as opposed to giving it a sentiment and making it work off that. Sequence 3 and 4 do seem to have fluidity issues, but they still kept a consistent sentiment. Overall, the text generation for both batches were pretty good for the amount of data we used to fine-tune the model.  In general, the model’s performance can be improved by fine-tuning with a larger dataset. I purposely chose to cap the training set at $3000$ samples because my GPU kept running out of memory when running for a larger sample size over $3$ epochs. This can potentially lead to issues since it is known that fine-tuning with small datasets can potentially lead to overfitting or ‘‘catastrophic forgetting’’, which is where the model loses previously learned information [8]. Another way to improve performance is to increase max_token_len. I chose $128$, but ideally, one should choose $256$ or $512$. The reason I had to go with $128$ was also because of my GPU. I did try running the fine-tuning on my CPU with larger sample sizes and/or max token lengths, but it was not feasible due to time constraints. Another test that can be done is training with more epochs to get more steps on the perplexity curves. This could help rule out the model overfitting. Of course, one can also experiment with varying the learning rate, batch size, and warmup ratio, or include weight decay.  As a sidenote, a common way to avoid catastrophic forgetting is using  parameter-efficient fine-tuning techniques such as Low-Rank Adaptation (LoRA) [8]. This technique works by freezing the model weights and fine-tuning with a batch of small low-rank matrices (called LoRA adapter) instead of the full model parameter set, making the fine-tuning process much faster and more memory-efficient. This drastically reduces the number of parameters that need to be trained, as well as keeps the base model unchanged. Afterwards, if one chooses to change the behavior of the model, the LoRA adapter can be swapped out and the base model can once again be fine-tuned with a different LoRA adapter.  In summary, we have learned how to fine-tuned a GPT-2 model to understand how reviews sound (good or bad) and determine what kind of sentence it should generate in continuation. We also learned about perplexity and how it can be used to describe the effectiveness of a model to generate accurate text. Overall, the model performed well on reviews that had pre-defined and obvious sentiment, but did not do so well with ambiguous reviews, which was expected. There is room for increasing the model’s capability of producing better review continuations, as well as making better conclusions on ambiguous inputs.  The code and plots presented in this post can be found on my Github under the gpt-2-gen repo [8]. Feel free to reach out if you have any questions about what we covered this week. I’ll be taking a few weeks off, but will come back with more about building and employing decoders. Stay tuned!  [1] Dzmitry Bahdanau, Kyunghyun Cho, &amp; Yoshua Bengio, Neural Machine Translation by Jointly Learning to Align and Translate, arXiv preprint arXiv:1409.0473, 2014.  [2] Ashish Vaswani, Noam Shazeer, Niki Parmar, et al., Attention is All you Need, Advances in Neural Information Processing Systems, 2017.  [3] Yoshua Bengio, Réjean Ducharme, Pascal Vincent, &amp; Christian Jauvin, A Neural Probabilistic Language Model, Journal of Machine Learning Research, 2003.  [4] Alec Radford, Jeffrey Wu, Rewon Child, et al., Language models are unsupervised multitask learners, OpenAI blog, 2019.  [5] Rafal Jozefowicz, Oriol Vinyals, Mike Schuster, et al., Exploring the Limits of Language Modeling, arXiv preprint arXiv:1602.02410, 2016.  [6] Jeremy Howard &amp; Sebastian Ruder, Universal Language Model Fine-tuning for Text Classification, Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), 2018. DOI: 10.18653/v1/P18-1031. [7] Edward J. Hu, Yelong Shen, Phillip Wallis, et al., LoRA: Low-Rank Adaptation of Large Language Models, arXiv preprint arXiv:2106.09685, 2021.  [8] Alberto J. Garcia, GPT-Style Language Model, 2025. Available at: https://github.com/AJG91/gpt-2-gen. ⬅ Back to Home">
+
+
+
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="AJG&#39;s Homepage">
+<meta property="og:title" content="Natural language models: GPT-2 causal text generator">
+<meta property="og:url" content="https://ajg91.github.io//posts/large-language-models/decoder-gpt-2-example/">
+
+
+  <meta property="og:description" content="November 30, 2025  This week we will be using a decoder to generate movie reviews. First, I will walk through the fine-tuning process. Then, I will show how well the decoder autocompletes movie reviews. As a note, the fine-tuning process is almost identical to fine-tuning an encoder, so there will be a lot of similarities between this and the previous post.  The foundation to text generation is masked self-attention and autoregressive training. Let’s assume we have a sequence of tokens $T_1, T_2, \ldots, T_n$. Self-attention lets token $T_i$ see all tokens in the sequence $\sum_{k=1}^{n} T_k$. This is bidirectional self-attention (unmasked), which we discussed last post. For causal language models, this won’t work since we can only use the past tokens to predict the next. This is where masked self-attention comes into play. With masked self-attention, the learning is unidirectional (left-to-right), which means that token $T_i$ can also see all tokens in the sequence $\sum_{k=1}^{i} T_k$. The reason for using the word ‘‘masked’’ is that a mask is applied to the attention matrix to mask all future tokens converting the matrix into a lower triangular matrix. Autoregressive training is a training objective where the model predicts token $T_i$ using all previous tokens $T_1, T_2, \ldots, T_{i-1}$ by minimizing a log-likelihood objective function. These two concepts allow the model to learn sequential dependencies and apply this to text generation  [8,8,8].  The model we will be fine-tuning it GPT-2 (Generative Pretrained Transformer 2). This is a transformer-based neural network that has been trained on a massive amount of text found on the internet. This model is used to generate the next word in a sequence in a coherent and contextual way. As previously mentioned, the original model was developed by OpenAI in 2019 and a smaller version (~124M parameters) was made available on the Hugging Face website [8], which is the one we will be using. Our job is to fine-tune it to the specific problem we are considering, which is to generate movie reviews based on sentiment. We are not generating sentiment, but outputting a continuation of an input text that contains some form of sentiment.  The first step is defining our parameters. Like previously seen, our parameters will be saved in a .yaml file and we will use SimpleNamespace as an easy way to store and access these parameters. Here are the parameters we will be using:  {   &quot;model_name&quot;: &quot;gpt2&quot;,   &quot;dataset&quot;: &quot;imdb&quot;,   &quot;seed&quot;: 42,   &quot;dpi&quot;: 400,   &quot;max_token_length&quot;: 128,   &quot;train_size&quot;: 3000,   &quot;val_size&quot;: 500,   &quot;lr&quot;: 2e-05,   &quot;warmup_ratio&quot;: 0.1,   &quot;epochs&quot;: 3,   &quot;train_batch_size&quot;: 4,   &quot;eval_batch_size&quot;: 4,   &quot;strategy&quot;: &quot;epoch&quot;,   &quot;fig_path&quot;: &quot;../outputs/&quot;,   &quot;res_path&quot;: &quot;../results/&quot; }   From here, we load the dataset, model, and tokenizer. This is done as follows:  dataset = load_dataset(cfg.dataset)  inst = CausalTextGeneration(cfg.model_name) dataset = inst.clean_data(dataset) data_tokenized = inst.tokenize_dataset(dataset, cfg.max_token_length) data_collator = inst.data_collator()   We have wrapped all the necessary code in the CausalTextGeneration custom class. In this class, we can find methods to import the dataset, clean the dataset, initialize the model, tokenize the dataset, etc. This class is defined as follows (I will omit the docstrings and unused methods for brevity. See the file model.py for more information):  class CausalTextGeneration():     def __init__(         self,          model_name: str     ):         self.model_name = model_name         self.device = get_device()         self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(model_name)         self.tokenizer.pad_token = self.tokenizer.eos_token      def clean_data(         self,         dataset: Union[Dataset, DatasetDict],         cutoff: int = 2000         ) -&gt; Union[Dataset, DatasetDict]:         dataset = dataset.filter(lambda x: len(x[&quot;text&quot;].strip()) &gt; 0)         dataset = dataset.filter(lambda x: len(x[&quot;text&quot;]) &lt; cutoff)         return dataset      def tokenize_text(         self,          prompt: str,          padding: Union[bool, str] = True,          truncation: Union[bool, str] = True     ) -&gt; dict[str, tc.Tensor]:         inputs = self.tokenizer(             prompt,             padding=padding,             truncation=truncation,             return_tensors=&quot;pt&quot;         )         return to_device(inputs, self.device)          def tokenize_dataset(         self,          dataset: Union[Dataset, DatasetDict],          max_token_length: int     ) -&gt; Union[Dataset, DatasetDict]:         def tokenize_fn(batch):             tokenized = self.tokenizer(                 batch[&quot;text&quot;],                 padding=False,                 truncation=True,                 max_length=max_token_length             )             return tokenized          data_tokenized = dataset.map(             tokenize_fn,             batched=True,             remove_columns=[&quot;text&quot;, &quot;label&quot;],         )         return data_tokenized          def data_collator(         self,          mlm: bool = False     ) -&gt; DataCollatorForLanguageModeling:         data_collator = DataCollatorForLanguageModeling(             tokenizer=self.tokenizer,             mlm=mlm         )         return data_collator      def load_model(         self,     ) -&gt; PreTrainedModel:         model = AutoModelForCausalLM.from_pretrained(             self.model_name,         ).to(self.device)         model.config.pad_token_id = self.tokenizer.pad_token_id         return model          def evaluate_model(         self,         prompt: Union[list[str], str],         model: PreTrainedModel,         max_new_tokens: int = 25,         do_sample: bool = True,         top_k: int = 25,         top_p: float = 0.95,         temperature: float = 0.7,         repetition_penalty: Union[int, float] = 1.1     ) -&gt; Union[tc.Tensor, GenerateOutput]:         inputs = self.tokenize_text(prompt)          model.eval()         with tc.no_grad():             outputs = model.generate(                 **inputs,                  max_new_tokens=max_new_tokens,                 do_sample=do_sample,                 top_k=top_k,                 top_p=top_p,                 temperature=temperature,                 repetition_penalty=repetition_penalty,                 pad_token_id=self.tokenizer.pad_token_id             )         return outputs   I will omit the explanation of each method since most of these were explained in the previous post, but I will go over key differences. For decoders, we will use the Hugging Face class AutoModelForCausalLM since we are now dealing with a causal model, which means that the model depends on the previous information to generate the next word. This is the key difference between encoders and decoders. The next key difference is found in the method tokenize_dataset. We had previously made the default for padding True, but for decoders we make it False. The reason has to do with the length of the reviews. Since we are setting the max token length to be $128$ (see parameters), no padding will actually occur since this length is less than the total length of a review. Hence the token vector will be fully composed of tokens with no blank space and padding would be useless.  We are also now using a pre-defined data collator initialized in the method data_collator, where we import the Hugging Face class DataCollatorForLanguageModeling. This collator automatically takes care of padding (if needed) and masking (as well as other things) for language models. For a causal languange model in particular, we set mlm=False, which tells the collator that the model should be trying to predict the next token. If true, the collator would follow BERT’s stragety of data preparation. There is actually a Hugging Face class called DataCollatorForCausalLM, which is used primarily for text generation models, but I am working with an older version of the transformers library where it is not yet available.  Another difference is that we have now included an evaluate_model method. As one can infer, it is used to evaluate the model using new, unseen data, but now we have different parameters to consider. Let’s go over each individual parameter in model.generate():     max_new_tokens = $25$            This is the total amount of tokens that will be used in the text generation.           do_sample = True            Tells model to sample from probability distribution instead of picking the highest-probability token.       do_sample = False $\rightarrow$ deterministic.       do_sample = True $\rightarrow$ random sampling.           top_k = $25$            Sorts logits, keeps top $25$ most probable tokens, and draws samples from them.       Lower k $\rightarrow$ more deterministic.       Higher k $\rightarrow$ more random.           top_p = $0.95$            Keeps the smallest set of tokens whose cumulative probability $\ge 0.95$.       Can be used in conjunction with top_k, which amounts to picking tokens that intersect with these two conditions.       Helps adapt to uncertainty by keeping the token selection dynamic since it is based on a probability mass as opposed to a fixed number.           temperature = $0.7$            Scales softmax distribution before sampling.       Lower T $\rightarrow$ more deterministic.       Higher T $\rightarrow$ more random.           repetition_penalty = $1.1$            Discourages the same token from reappearing by scaling all logits that have already been used by some value $&gt; 1$.       This occurs when there is a lack of sampling diversity, which causes reinforcement of certain phrases/tokens.           Now, we look at the TrainingArguments and Trainer classes:  training_args = TrainingArguments(     output_dir=cfg.res_path,     overwrite_output_dir=True,     report_to=&quot;none&quot;,     eval_strategy=cfg.strategy,     save_strategy=cfg.strategy,     logging_strategy= cfg.strategy,     learning_rate=cfg.lr,     per_device_train_batch_size=cfg.train_batch_size,     per_device_eval_batch_size=cfg.eval_batch_size,     num_train_epochs=cfg.epochs,     warmup_ratio=cfg.warmup_ratio,     seed=cfg.seed )   The TrainingArguments parameters are mostly the same as for the encoder. One big difference is the parameter warmup_ratio. This parameter controls the learning rate at the start of the training by slowly ramping up the learning rate. It initially starts the learning rate at $0$, then linearly increases it until it reaches the max learning rate (chosen by user) and decays from there. The warmup length is given in steps, which is taken by scaling the total steps by the warmup ratio. The purpose of this parameter is to gradually change the model weights at the start of training since the weights are not yet stable.  The main body of the Trainer is essentially the same as before, expect the last two lines are replaced by the data collator. In this case, we choose to not pass in any metrics since we will be calculating the perplexity of the evaluation loss (explained later). The Trainer looks like the following:  trainer = Trainer(     model=model,     args=training_args,     train_dataset=data_tokenized[&quot;train&quot;].shuffle(seed=cfg.seed).select(range(cfg.train_size)),     eval_dataset=data_tokenized[&quot;test&quot;].shuffle(seed=cfg.seed).select(range(cfg.val_size)),     data_collator=data_collator )   As before, we pass in the model, the training arguments, the different datasets, and the collator (new!) into the trainer. These datasets are huge so we shuffe, seed, and select a subset of the train ($3000$ samples) and test ($500$ samples) set as a demonstration. In actual fine-tuning, it’s essential to use all the available data. Now, all we have to do is run trainer.train() and the model begins to train.  For our example, we get the following metrics:  Epoch 	Training Loss   Validation Loss   1 	   3.870400 	    3.709818   2 	   3.685000 	    3.707382   3 	   3.607300 	    3.709974   While the training loss is decreasing, it is not decreasing by much. On the other hand, the validation loss starts to decrease then slightly increases. While this may seem troubling at first glance, it is actually not that bad. GPT-2 is actually a very large model, which means that fine-tuning will only slightly decrease the loss. Not to mention, we are only fine-tuning with $3000$ samples. This is such a small sample size in comparison to the data used to train the model that such a small step size in training loss is to be expected. This also partly explains the increase in validation loss during the last epoch since the sample size for the validation dataset is $500$. The change in loss is in the hundredth decimal place, which for most applications can be attributed to small fluctuations (a.k.a. noise). There is a possibility of slight overfitting, but I don’t think there is enough proof. More tests need to be considered with a larger sample size to determine if the model is indeed overfitting.  We can also calculate the perplexity to determine how well the model learned. Perplexity is a way to measure how well a model can predict the next token [8]. It is calculated as the exponent of the average cross-entropy loss. In other words,  [\mathrm{perplexity} = e^{\mathrm{loss}}.]  The lower the perplexity, the less token ‘‘choices’’ the model has, hence the more accurate the model prediction. The higher the perplexity, the more token ‘‘choices’’, the more uncertain the model is of its predictions. Ideally, the perplexity has an exponential decay behavior as the model learns. Here is a plot of the perplexity for the training and validation phases:    From the plot, we see that the training perplexity does indeed follow an exponential decay behavior. On the other hand, the validation perplexity increases, which is attributed to what was already mentioned above. Note that steps is the global steps taken during the fine-tuning of the model.  Now that our model is fine-tuned, let’s see how well it can autocomplete movie reviews. Here are beginning of reviews that I created:  reviews = [     &quot;This movie was terrible. The acting was mediocre.&quot;,     &quot;I highly recommend this movie to everyone.&quot;,     &quot;This was a great movie. I wish it was longer.&quot;,     &quot;I do not recommend this movie. The actors are terrible.&quot;, ]   In this example, I chose to make the sentiment obvious to see how well the model could understand this and expand on the review. The code that calls the evaluate_model method and prints out the generated text is:  outputs = inst.evaluate_model(reviews, model)  for i, seq in enumerate(outputs):     print(f&quot;Seq. {i + 1}:&quot;)     print(f&quot;{inst.tokenizer.decode(seq, skip_special_tokens=True)}&quot;)     print(&quot;\n&quot;)   Here are the outputs of the model:  Seq. 1: This movie was terrible. The acting was mediocre.It is a very good horror film, but I think it will appeal to many people as well (especially the young ones).  Seq. 2: I highly recommend this movie to everyone.  If you want a good laugh, go with the story and characters of The Sopranos. If not then read  Seq. 3: This was a great movie. I wish it was longer. It is not as good as the first one, but this time you can see why people are so angry and upset about what  Seq. 4: I do not recommend this movie. The actors are terrible. They had an awful time with the acting in it, and I have yet to see a single scene where they did anything other   Overall, the expanded reviews generated by the model seem to somewhat fit the sentiment of the input reviews. There are no issues with Sequence 1 and 4, but we should analyze the other two. Sequence 2 seems to deviate from the inital sentiment. It goes on to talk about The Sopranos even though the input text did not mention anything about that show. Sequence 3 seems to not quite understand what sentiment it is supposed to show, but this is because the sentence ‘‘I wish it was longer.’’ can be interpreted as a negative sentiment even though the first sentence has a positive sentiment. So the output seems to make sense.  Let’s try some harder reviews.  reviews = [     &quot;Wow! I was suprised by how much &quot;,     &quot;This film was such a surprise. &quot;,     &quot;I never thought I would &quot;,     &quot;This movie makes me want to yell &quot; ]   As you can tell, these reviews are more difficult to determine sentiment from. They are ambiguous as to whether they think the movie was good or bad. Let’s see how well the model categorizes them:  Seq. 1: Wow! I was suprised by how much vernacular this film used to be, and also the way it kept me guessing. For starters: How would you like a  Seq. 2: This film was such a surprise. A beautiful movie with some great characters, the director and actors had wonderful chemistry to create this story that is very entertaining - even  Seq. 3: I never thought I would This movie was so bad, but it is. It&#39;s not that BAD though! Just an awful story with no redeeming  Seq. 4: This movie makes me want to yell The Devil is a Bad Idea. It&#39;s just terrible, it has no suspense and the plot doesn&#39;t move at all!   In this case, the model does a decent job in generating reviews with varying sentiment. This may be because the second batch gave the model more flexibility in producing reviews that kept to one sentiment, as opposed to giving it a sentiment and making it work off that. Sequence 3 and 4 do seem to have fluidity issues, but they still kept a consistent sentiment. Overall, the text generation for both batches were pretty good for the amount of data we used to fine-tune the model.  In general, the model’s performance can be improved by fine-tuning with a larger dataset. I purposely chose to cap the training set at $3000$ samples because my GPU kept running out of memory when running for a larger sample size over $3$ epochs. This can potentially lead to issues since it is known that fine-tuning with small datasets can potentially lead to overfitting or ‘‘catastrophic forgetting’’, which is where the model loses previously learned information [8]. Another way to improve performance is to increase max_token_len. I chose $128$, but ideally, one should choose $256$ or $512$. The reason I had to go with $128$ was also because of my GPU. I did try running the fine-tuning on my CPU with larger sample sizes and/or max token lengths, but it was not feasible due to time constraints. Another test that can be done is training with more epochs to get more steps on the perplexity curves. This could help rule out the model overfitting. Of course, one can also experiment with varying the learning rate, batch size, and warmup ratio, or include weight decay.  As a sidenote, a common way to avoid catastrophic forgetting is using  parameter-efficient fine-tuning techniques such as Low-Rank Adaptation (LoRA) [8]. This technique works by freezing the model weights and fine-tuning with a batch of small low-rank matrices (called LoRA adapter) instead of the full model parameter set, making the fine-tuning process much faster and more memory-efficient. This drastically reduces the number of parameters that need to be trained, as well as keeps the base model unchanged. Afterwards, if one chooses to change the behavior of the model, the LoRA adapter can be swapped out and the base model can once again be fine-tuned with a different LoRA adapter.  In summary, we have learned how to fine-tuned a GPT-2 model to understand how reviews sound (good or bad) and determine what kind of sentence it should generate in continuation. We also learned about perplexity and how it can be used to describe the effectiveness of a model to generate accurate text. Overall, the model performed well on reviews that had pre-defined and obvious sentiment, but did not do so well with ambiguous reviews, which was expected. There is room for increasing the model’s capability of producing better review continuations, as well as making better conclusions on ambiguous inputs.  The code and plots presented in this post can be found on my Github under the gpt-2-gen repo [8]. Feel free to reach out if you have any questions about what we covered this week. I’ll be taking a few weeks off, but will come back with more about building and employing decoders. Stay tuned!  [1] Dzmitry Bahdanau, Kyunghyun Cho, &amp; Yoshua Bengio, Neural Machine Translation by Jointly Learning to Align and Translate, arXiv preprint arXiv:1409.0473, 2014.  [2] Ashish Vaswani, Noam Shazeer, Niki Parmar, et al., Attention is All you Need, Advances in Neural Information Processing Systems, 2017.  [3] Yoshua Bengio, Réjean Ducharme, Pascal Vincent, &amp; Christian Jauvin, A Neural Probabilistic Language Model, Journal of Machine Learning Research, 2003.  [4] Alec Radford, Jeffrey Wu, Rewon Child, et al., Language models are unsupervised multitask learners, OpenAI blog, 2019.  [5] Rafal Jozefowicz, Oriol Vinyals, Mike Schuster, et al., Exploring the Limits of Language Modeling, arXiv preprint arXiv:1602.02410, 2016.  [6] Jeremy Howard &amp; Sebastian Ruder, Universal Language Model Fine-tuning for Text Classification, Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), 2018. DOI: 10.18653/v1/P18-1031. [7] Edward J. Hu, Yelong Shen, Phillip Wallis, et al., LoRA: Low-Rank Adaptation of Large Language Models, arXiv preprint arXiv:2106.09685, 2021.  [8] Alberto J. Garcia, GPT-Style Language Model, 2025. Available at: https://github.com/AJG91/gpt-2-gen. ⬅ Back to Home">
+
+
+
+
+
+
+
+  <meta property="article:published_time" content="2025-11-30T00:00:00-08:00">
+
+
+
+
+
+
+<link rel="canonical" href="https://ajg91.github.io//posts/large-language-models/decoder-gpt-2-example/">
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- end _includes/seo.html -->
+
+
+
+  <link href="/feed.xml" type="application/atom+xml" rel="alternate" title="AJG's Homepage Feed">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+  
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css"></noscript>
+
+
+
+    <script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$','$$'], ['\\[','\\]']]
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
+  </head>
+
+  <body class="layout--single" dir="ltr">
+    <nav class="skip-links">
+  <ul>
+    <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
+    <li><a href="#main" class="screen-reader-shortcut">Skip to content</a></li>
+    <li><a href="#footer" class="screen-reader-shortcut">Skip to footer</a></li>
+  </ul>
+</nav>
+
+    
+
+<div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        
+        <a class="site-title" href="/">
+          AJG&#39;s Homepage
+          
+        </a>
+        <ul class="visible-links"><li class="masthead__menu-item">
+              <a
+                href="/posts/"
+                
+                
+              >Posts</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/publications/"
+                
+                
+              >Publications</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/talks/"
+                
+                
+              >Talks</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/software/"
+                
+                
+              >Software</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/contact/"
+                
+                
+              >Contact Me</a>
+            </li></ul>
+        
+        <button class="greedy-nav__toggle hidden" type="button">
+          <span class="visually-hidden">Toggle menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+
+    <div class="initial-content">
+      
+
+
+
+
+  
+    
+
+
+
+<nav class="breadcrumbs">
+  <ol itemscope itemtype="https://schema.org/BreadcrumbList">
+    
+    
+    
+      
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/" itemprop="item"><span itemprop="name">Home</span></a>
+
+          <meta itemprop="position" content="1" />
+        </li>
+        <span class="sep">/</span>
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/posts" itemprop="item"><span itemprop="name">Posts</span></a>
+          <meta itemprop="position" content="2" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/large-language-models" itemprop="item"><span itemprop="name">Large language models</span></a>
+          <meta itemprop="position" content="3" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        <li class="current">Natural language models: GPT-2 causal text generator</li>
+      
+    
+  </ol>
+</nav>
+
+  
+
+
+<div id="main" role="main">
+  
+
+
+  <article class="page" itemscope itemtype="https://schema.org/CreativeWork">
+    <meta itemprop="headline" content="Natural language models: GPT-2 causal text generator">
+    <meta itemprop="description" content="November 30, 2025This week we will be using a decoder to generate movie reviews. First, I will walk through the fine-tuning process. Then, I will show how well the decoder autocompletes movie reviews. As a note, the fine-tuning process is almost identical to fine-tuning an encoder, so there will be a lot of similarities between this and the previous post.The foundation to text generation is masked self-attention and autoregressive training. Let’s assume we have a sequence of tokens $T_1, T_2, \ldots, T_n$. Self-attention lets token $T_i$ see all tokens in the sequence $\sum_{k=1}^{n} T_k$. This is bidirectional self-attention (unmasked), which we discussed last post. For causal language models, this won’t work since we can only use the past tokens to predict the next. This is where masked self-attention comes into play. With masked self-attention, the learning is unidirectional (left-to-right), which means that token $T_i$ can also see all tokens in the sequence $\sum_{k=1}^{i} T_k$. The reason for using the word ‘‘masked’’ is that a mask is applied to the attention matrix to mask all future tokens converting the matrix into a lower triangular matrix. Autoregressive training is a training objective where the model predicts token $T_i$ using all previous tokens $T_1, T_2, \ldots, T_{i-1}$ by minimizing a log-likelihood objective function. These two concepts allow the model to learn sequential dependencies and apply this to text generation  [8,8,8].The model we will be fine-tuning it GPT-2 (Generative Pretrained Transformer 2). This is a transformer-based neural network that has been trained on a massive amount of text found on the internet. This model is used to generate the next word in a sequence in a coherent and contextual way. As previously mentioned, the original model was developed by OpenAI in 2019 and a smaller version (~124M parameters) was made available on the Hugging Face website [8], which is the one we will be using. Our job is to fine-tune it to the specific problem we are considering, which is to generate movie reviews based on sentiment. We are not generating sentiment, but outputting a continuation of an input text that contains some form of sentiment.The first step is defining our parameters. Like previously seen, our parameters will be saved in a .yaml file and we will use SimpleNamespace as an easy way to store and access these parameters. Here are the parameters we will be using:{  &quot;model_name&quot;: &quot;gpt2&quot;,  &quot;dataset&quot;: &quot;imdb&quot;,  &quot;seed&quot;: 42,  &quot;dpi&quot;: 400,  &quot;max_token_length&quot;: 128,  &quot;train_size&quot;: 3000,  &quot;val_size&quot;: 500,  &quot;lr&quot;: 2e-05,  &quot;warmup_ratio&quot;: 0.1,  &quot;epochs&quot;: 3,  &quot;train_batch_size&quot;: 4,  &quot;eval_batch_size&quot;: 4,  &quot;strategy&quot;: &quot;epoch&quot;,  &quot;fig_path&quot;: &quot;../outputs/&quot;,  &quot;res_path&quot;: &quot;../results/&quot;}From here, we load the dataset, model, and tokenizer. This is done as follows:dataset = load_dataset(cfg.dataset)inst = CausalTextGeneration(cfg.model_name)dataset = inst.clean_data(dataset)data_tokenized = inst.tokenize_dataset(dataset, cfg.max_token_length)data_collator = inst.data_collator()We have wrapped all the necessary code in the CausalTextGeneration custom class. In this class, we can find methods to import the dataset, clean the dataset, initialize the model, tokenize the dataset, etc. This class is defined as follows (I will omit the docstrings and unused methods for brevity. See the file model.py for more information):class CausalTextGeneration():    def __init__(        self,         model_name: str    ):        self.model_name = model_name        self.device = get_device()        self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(model_name)        self.tokenizer.pad_token = self.tokenizer.eos_token    def clean_data(        self,        dataset: Union[Dataset, DatasetDict],        cutoff: int = 2000        ) -&gt; Union[Dataset, DatasetDict]:        dataset = dataset.filter(lambda x: len(x[&quot;text&quot;].strip()) &gt; 0)        dataset = dataset.filter(lambda x: len(x[&quot;text&quot;]) &lt; cutoff)        return dataset    def tokenize_text(        self,         prompt: str,         padding: Union[bool, str] = True,         truncation: Union[bool, str] = True    ) -&gt; dict[str, tc.Tensor]:        inputs = self.tokenizer(            prompt,            padding=padding,            truncation=truncation,            return_tensors=&quot;pt&quot;        )        return to_device(inputs, self.device)        def tokenize_dataset(        self,         dataset: Union[Dataset, DatasetDict],         max_token_length: int    ) -&gt; Union[Dataset, DatasetDict]:        def tokenize_fn(batch):            tokenized = self.tokenizer(                batch[&quot;text&quot;],                padding=False,                truncation=True,                max_length=max_token_length            )            return tokenized        data_tokenized = dataset.map(            tokenize_fn,            batched=True,            remove_columns=[&quot;text&quot;, &quot;label&quot;],        )        return data_tokenized        def data_collator(        self,         mlm: bool = False    ) -&gt; DataCollatorForLanguageModeling:        data_collator = DataCollatorForLanguageModeling(            tokenizer=self.tokenizer,            mlm=mlm        )        return data_collator    def load_model(        self,    ) -&gt; PreTrainedModel:        model = AutoModelForCausalLM.from_pretrained(            self.model_name,        ).to(self.device)        model.config.pad_token_id = self.tokenizer.pad_token_id        return model        def evaluate_model(        self,        prompt: Union[list[str], str],        model: PreTrainedModel,        max_new_tokens: int = 25,        do_sample: bool = True,        top_k: int = 25,        top_p: float = 0.95,        temperature: float = 0.7,        repetition_penalty: Union[int, float] = 1.1    ) -&gt; Union[tc.Tensor, GenerateOutput]:        inputs = self.tokenize_text(prompt)        model.eval()        with tc.no_grad():            outputs = model.generate(                **inputs,                 max_new_tokens=max_new_tokens,                do_sample=do_sample,                top_k=top_k,                top_p=top_p,                temperature=temperature,                repetition_penalty=repetition_penalty,                pad_token_id=self.tokenizer.pad_token_id            )        return outputsI will omit the explanation of each method since most of these were explained in the previous post, but I will go over key differences. For decoders, we will use the Hugging Face class AutoModelForCausalLM since we are now dealing with a causal model, which means that the model depends on the previous information to generate the next word. This is the key difference between encoders and decoders. The next key difference is found in the method tokenize_dataset. We had previously made the default for padding True, but for decoders we make it False. The reason has to do with the length of the reviews. Since we are setting the max token length to be $128$ (see parameters), no padding will actually occur since this length is less than the total length of a review. Hence the token vector will be fully composed of tokens with no blank space and padding would be useless.We are also now using a pre-defined data collator initialized in the method data_collator, where we import the Hugging Face class DataCollatorForLanguageModeling. This collator automatically takes care of padding (if needed) and masking (as well as other things) for language models. For a causal languange model in particular, we set mlm=False, which tells the collator that the model should be trying to predict the next token. If true, the collator would follow BERT’s stragety of data preparation. There is actually a Hugging Face class called DataCollatorForCausalLM, which is used primarily for text generation models, but I am working with an older version of the transformers library where it is not yet available.Another difference is that we have now included an evaluate_model method. As one can infer, it is used to evaluate the model using new, unseen data, but now we have different parameters to consider. Let’s go over each individual parameter in model.generate():  max_new_tokens = $25$          This is the total amount of tokens that will be used in the text generation.        do_sample = True          Tells model to sample from probability distribution instead of picking the highest-probability token.      do_sample = False $\rightarrow$ deterministic.      do_sample = True $\rightarrow$ random sampling.        top_k = $25$          Sorts logits, keeps top $25$ most probable tokens, and draws samples from them.      Lower k $\rightarrow$ more deterministic.      Higher k $\rightarrow$ more random.        top_p = $0.95$          Keeps the smallest set of tokens whose cumulative probability $\ge 0.95$.      Can be used in conjunction with top_k, which amounts to picking tokens that intersect with these two conditions.      Helps adapt to uncertainty by keeping the token selection dynamic since it is based on a probability mass as opposed to a fixed number.        temperature = $0.7$          Scales softmax distribution before sampling.      Lower T $\rightarrow$ more deterministic.      Higher T $\rightarrow$ more random.        repetition_penalty = $1.1$          Discourages the same token from reappearing by scaling all logits that have already been used by some value $&gt; 1$.      This occurs when there is a lack of sampling diversity, which causes reinforcement of certain phrases/tokens.      Now, we look at the TrainingArguments and Trainer classes:training_args = TrainingArguments(    output_dir=cfg.res_path,    overwrite_output_dir=True,    report_to=&quot;none&quot;,    eval_strategy=cfg.strategy,    save_strategy=cfg.strategy,    logging_strategy= cfg.strategy,    learning_rate=cfg.lr,    per_device_train_batch_size=cfg.train_batch_size,    per_device_eval_batch_size=cfg.eval_batch_size,    num_train_epochs=cfg.epochs,    warmup_ratio=cfg.warmup_ratio,    seed=cfg.seed)The TrainingArguments parameters are mostly the same as for the encoder. One big difference is the parameter warmup_ratio. This parameter controls the learning rate at the start of the training by slowly ramping up the learning rate. It initially starts the learning rate at $0$, then linearly increases it until it reaches the max learning rate (chosen by user) and decays from there. The warmup length is given in steps, which is taken by scaling the total steps by the warmup ratio. The purpose of this parameter is to gradually change the model weights at the start of training since the weights are not yet stable.The main body of the Trainer is essentially the same as before, expect the last two lines are replaced by the data collator. In this case, we choose to not pass in any metrics since we will be calculating the perplexity of the evaluation loss (explained later). The Trainer looks like the following:trainer = Trainer(    model=model,    args=training_args,    train_dataset=data_tokenized[&quot;train&quot;].shuffle(seed=cfg.seed).select(range(cfg.train_size)),    eval_dataset=data_tokenized[&quot;test&quot;].shuffle(seed=cfg.seed).select(range(cfg.val_size)),    data_collator=data_collator)As before, we pass in the model, the training arguments, the different datasets, and the collator (new!) into the trainer. These datasets are huge so we shuffe, seed, and select a subset of the train ($3000$ samples) and test ($500$ samples) set as a demonstration. In actual fine-tuning, it’s essential to use all the available data. Now, all we have to do is run trainer.train() and the model begins to train.For our example, we get the following metrics:Epoch 	Training Loss   Validation Loss  1 	   3.870400 	    3.709818  2 	   3.685000 	    3.707382  3 	   3.607300 	    3.709974While the training loss is decreasing, it is not decreasing by much. On the other hand, the validation loss starts to decrease then slightly increases. While this may seem troubling at first glance, it is actually not that bad. GPT-2 is actually a very large model, which means that fine-tuning will only slightly decrease the loss. Not to mention, we are only fine-tuning with $3000$ samples. This is such a small sample size in comparison to the data used to train the model that such a small step size in training loss is to be expected. This also partly explains the increase in validation loss during the last epoch since the sample size for the validation dataset is $500$. The change in loss is in the hundredth decimal place, which for most applications can be attributed to small fluctuations (a.k.a. noise). There is a possibility of slight overfitting, but I don’t think there is enough proof. More tests need to be considered with a larger sample size to determine if the model is indeed overfitting.We can also calculate the perplexity to determine how well the model learned. Perplexity is a way to measure how well a model can predict the next token [8]. It is calculated as the exponent of the average cross-entropy loss. In other words,[\mathrm{perplexity} = e^{\mathrm{loss}}.]The lower the perplexity, the less token ‘‘choices’’ the model has, hence the more accurate the model prediction. The higher the perplexity, the more token ‘‘choices’’, the more uncertain the model is of its predictions. Ideally, the perplexity has an exponential decay behavior as the model learns. Here is a plot of the perplexity for the training and validation phases:From the plot, we see that the training perplexity does indeed follow an exponential decay behavior. On the other hand, the validation perplexity increases, which is attributed to what was already mentioned above. Note that steps is the global steps taken during the fine-tuning of the model.Now that our model is fine-tuned, let’s see how well it can autocomplete movie reviews. Here are beginning of reviews that I created:reviews = [    &quot;This movie was terrible. The acting was mediocre.&quot;,    &quot;I highly recommend this movie to everyone.&quot;,    &quot;This was a great movie. I wish it was longer.&quot;,    &quot;I do not recommend this movie. The actors are terrible.&quot;,]In this example, I chose to make the sentiment obvious to see how well the model could understand this and expand on the review. The code that calls the evaluate_model method and prints out the generated text is:outputs = inst.evaluate_model(reviews, model)for i, seq in enumerate(outputs):    print(f&quot;Seq. {i + 1}:&quot;)    print(f&quot;{inst.tokenizer.decode(seq, skip_special_tokens=True)}&quot;)    print(&quot;\n&quot;)Here are the outputs of the model:Seq. 1:This movie was terrible. The acting was mediocre.It is a very good horror film, but I think it will appeal to many people as well (especially the young ones).Seq. 2:I highly recommend this movie to everyone.If you want a good laugh, go with the story and characters of The Sopranos. If not then readSeq. 3:This was a great movie. I wish it was longer. It is not as good as the first one, but this time you can see why people are so angry and upset about whatSeq. 4:I do not recommend this movie. The actors are terrible. They had an awful time with the acting in it, and I have yet to see a single scene where they did anything otherOverall, the expanded reviews generated by the model seem to somewhat fit the sentiment of the input reviews. There are no issues with Sequence 1 and 4, but we should analyze the other two. Sequence 2 seems to deviate from the inital sentiment. It goes on to talk about The Sopranos even though the input text did not mention anything about that show. Sequence 3 seems to not quite understand what sentiment it is supposed to show, but this is because the sentence ‘‘I wish it was longer.’’ can be interpreted as a negative sentiment even though the first sentence has a positive sentiment. So the output seems to make sense.Let’s try some harder reviews.reviews = [    &quot;Wow! I was suprised by how much &quot;,    &quot;This film was such a surprise. &quot;,    &quot;I never thought I would &quot;,    &quot;This movie makes me want to yell &quot;]As you can tell, these reviews are more difficult to determine sentiment from. They are ambiguous as to whether they think the movie was good or bad. Let’s see how well the model categorizes them:Seq. 1:Wow! I was suprised by how much vernacular this film used to be, and also the way it kept me guessing. For starters: How would you like aSeq. 2:This film was such a surprise. A beautiful movie with some great characters, the director and actors had wonderful chemistry to create this story that is very entertaining - evenSeq. 3:I never thought I would This movie was so bad, but it is. It&#39;s not that BAD though! Just an awful story with no redeemingSeq. 4:This movie makes me want to yell The Devil is a Bad Idea. It&#39;s just terrible, it has no suspense and the plot doesn&#39;t move at all!In this case, the model does a decent job in generating reviews with varying sentiment. This may be because the second batch gave the model more flexibility in producing reviews that kept to one sentiment, as opposed to giving it a sentiment and making it work off that. Sequence 3 and 4 do seem to have fluidity issues, but they still kept a consistent sentiment. Overall, the text generation for both batches were pretty good for the amount of data we used to fine-tune the model.In general, the model’s performance can be improved by fine-tuning with a larger dataset. I purposely chose to cap the training set at $3000$ samples because my GPU kept running out of memory when running for a larger sample size over $3$ epochs. This can potentially lead to issues since it is known that fine-tuning with small datasets can potentially lead to overfitting or ‘‘catastrophic forgetting’’, which is where the model loses previously learned information [8]. Another way to improve performance is to increase max_token_len. I chose $128$, but ideally, one should choose $256$ or $512$. The reason I had to go with $128$ was also because of my GPU. I did try running the fine-tuning on my CPU with larger sample sizes and/or max token lengths, but it was not feasible due to time constraints. Another test that can be done is training with more epochs to get more steps on the perplexity curves. This could help rule out the model overfitting. Of course, one can also experiment with varying the learning rate, batch size, and warmup ratio, or include weight decay.As a sidenote, a common way to avoid catastrophic forgetting is using  parameter-efficient fine-tuning techniques such as Low-Rank Adaptation (LoRA) [8]. This technique works by freezing the model weights and fine-tuning with a batch of small low-rank matrices (called LoRA adapter) instead of the full model parameter set, making the fine-tuning process much faster and more memory-efficient. This drastically reduces the number of parameters that need to be trained, as well as keeps the base model unchanged. Afterwards, if one chooses to change the behavior of the model, the LoRA adapter can be swapped out and the base model can once again be fine-tuned with a different LoRA adapter.In summary, we have learned how to fine-tuned a GPT-2 model to understand how reviews sound (good or bad) and determine what kind of sentence it should generate in continuation. We also learned about perplexity and how it can be used to describe the effectiveness of a model to generate accurate text. Overall, the model performed well on reviews that had pre-defined and obvious sentiment, but did not do so well with ambiguous reviews, which was expected. There is room for increasing the model’s capability of producing better review continuations, as well as making better conclusions on ambiguous inputs.The code and plots presented in this post can be found on my Github under the gpt-2-gen repo [8]. Feel free to reach out if you have any questions about what we covered this week. I’ll be taking a few weeks off, but will come back with more about building and employing decoders. Stay tuned![1] Dzmitry Bahdanau, Kyunghyun Cho, &amp; Yoshua Bengio, Neural Machine Translation by Jointly Learning to Align and Translate, arXiv preprint arXiv:1409.0473, 2014. [2] Ashish Vaswani, Noam Shazeer, Niki Parmar, et al., Attention is All you Need, Advances in Neural Information Processing Systems, 2017. [3] Yoshua Bengio, Réjean Ducharme, Pascal Vincent, &amp; Christian Jauvin, A Neural Probabilistic Language Model, Journal of Machine Learning Research, 2003. [4] Alec Radford, Jeffrey Wu, Rewon Child, et al., Language models are unsupervised multitask learners, OpenAI blog, 2019. [5] Rafal Jozefowicz, Oriol Vinyals, Mike Schuster, et al., Exploring the Limits of Language Modeling, arXiv preprint arXiv:1602.02410, 2016. [6] Jeremy Howard &amp; Sebastian Ruder, Universal Language Model Fine-tuning for Text Classification, Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), 2018. DOI: 10.18653/v1/P18-1031.[7] Edward J. Hu, Yelong Shen, Phillip Wallis, et al., LoRA: Low-Rank Adaptation of Large Language Models, arXiv preprint arXiv:2106.09685, 2021. [8] Alberto J. Garcia, GPT-Style Language Model, 2025. Available at: https://github.com/AJG91/gpt-2-gen.⬅ Back to Home">
+    <meta itemprop="datePublished" content="2025-11-30T00:00:00-08:00">
+    
+
+    <div class="page__inner-wrap">
+      
+        <header>
+          <h1 id="page-title" class="page__title" itemprop="headline">
+            <a href="https://ajg91.github.io//posts/large-language-models/decoder-gpt-2-example/" itemprop="url">Natural language models: GPT-2 causal text generator
+</a>
+          </h1>
+          
+
+
+        </header>
+      
+
+      <section class="page__content" itemprop="text">
+        
+        <p class="post-date">November 30, 2025</p>
+
+<p>This week we will be using a decoder to generate movie reviews. First, I will walk through the fine-tuning process. Then, I will show how well the decoder autocompletes movie reviews. As a note, the fine-tuning process is almost identical to fine-tuning an encoder, so there will be a lot of similarities between this and the previous <a href="https://ajg91.github.io/posts/2025-11-16-encoder-distilbert-classifier/" title="encoder-post">post</a>.</p>
+
+<p>The foundation to text generation is masked self-attention and autoregressive training. Let’s assume we have a sequence of tokens $T_1, T_2, \ldots, T_n$. Self-attention lets token $T_i$ see all tokens in the sequence $\sum_{k=1}^{n} T_k$. This is bidirectional self-attention (unmasked), which we discussed last post. For causal language models, this won’t work since we can only use the past tokens to predict the next. This is where masked self-attention comes into play. With masked self-attention, the learning is unidirectional (left-to-right), which means that token $T_i$ can also see all tokens in the sequence $\sum_{k=1}^{i} T_k$. The reason for using the word ‘‘masked’’ is that a mask is applied to the attention matrix to mask all future tokens converting the matrix into a lower triangular matrix. Autoregressive training is a training objective where the model predicts token $T_i$ using all previous tokens $T_1, T_2, \ldots, T_{i-1}$ by minimizing a log-likelihood objective function. These two concepts allow the model to learn sequential dependencies and apply this to text generation  <a class="citation" href="#bahdanau2014neural">[1,2,3]</a>.</p>
+
+<p>The model we will be fine-tuning it GPT-2 (Generative Pretrained Transformer 2). This is a transformer-based neural network that has been trained on a massive amount of text found on the internet. This model is used to generate the next word in a sequence in a coherent and contextual way. As previously mentioned, the original model was developed by OpenAI in 2019 and a smaller version (~124M parameters) was made available on the Hugging Face <a href="https://huggingface.co/openai-community/gpt2" title="hf-gpt2">website</a> <a class="citation" href="#radford2019language">[4]</a>, which is the one we will be using. Our job is to fine-tune it to the specific problem we are considering, which is to generate movie reviews based on sentiment. We are <strong>not</strong> generating sentiment, but outputting a continuation of an input text that contains some form of sentiment.</p>
+
+<p>The first step is defining our parameters. Like previously seen, our parameters will be saved in a <code class="language-plaintext highlighter-rouge">.yaml</code> file and we will use SimpleNamespace as an easy way to store and access these parameters. Here are the parameters we will be using:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span>
+  <span class="sh">"</span><span class="s">model_name</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">gpt2</span><span class="sh">"</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">dataset</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">imdb</span><span class="sh">"</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">seed</span><span class="sh">"</span><span class="p">:</span> <span class="mi">42</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">dpi</span><span class="sh">"</span><span class="p">:</span> <span class="mi">400</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">max_token_length</span><span class="sh">"</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">train_size</span><span class="sh">"</span><span class="p">:</span> <span class="mi">3000</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">val_size</span><span class="sh">"</span><span class="p">:</span> <span class="mi">500</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">lr</span><span class="sh">"</span><span class="p">:</span> <span class="mf">2e-05</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">warmup_ratio</span><span class="sh">"</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">epochs</span><span class="sh">"</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">train_batch_size</span><span class="sh">"</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">eval_batch_size</span><span class="sh">"</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">strategy</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">epoch</span><span class="sh">"</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">fig_path</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">../outputs/</span><span class="sh">"</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">res_path</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">../results/</span><span class="sh">"</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>From here, we load the dataset, model, and tokenizer. This is done as follows:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">dataset</span> <span class="o">=</span> <span class="nf">load_dataset</span><span class="p">(</span><span class="n">cfg</span><span class="p">.</span><span class="n">dataset</span><span class="p">)</span>
+
+<span class="n">inst</span> <span class="o">=</span> <span class="nc">CausalTextGeneration</span><span class="p">(</span><span class="n">cfg</span><span class="p">.</span><span class="n">model_name</span><span class="p">)</span>
+<span class="n">dataset</span> <span class="o">=</span> <span class="n">inst</span><span class="p">.</span><span class="nf">clean_data</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
+<span class="n">data_tokenized</span> <span class="o">=</span> <span class="n">inst</span><span class="p">.</span><span class="nf">tokenize_dataset</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">cfg</span><span class="p">.</span><span class="n">max_token_length</span><span class="p">)</span>
+<span class="n">data_collator</span> <span class="o">=</span> <span class="n">inst</span><span class="p">.</span><span class="nf">data_collator</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>We have wrapped all the necessary code in the <code class="language-plaintext highlighter-rouge">CausalTextGeneration</code> custom class. In this class, we can find methods to import the dataset, clean the dataset, initialize the model, tokenize the dataset, etc. This class is defined as follows (I will omit the docstrings and unused methods for brevity. See the file <code class="language-plaintext highlighter-rouge">model.py</code> for more information):</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">CausalTextGeneration</span><span class="p">():</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">,</span> 
+        <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="p">):</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">model_name</span> <span class="o">=</span> <span class="n">model_name</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">device</span> <span class="o">=</span> <span class="nf">get_device</span><span class="p">()</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">tokenizer</span><span class="p">:</span> <span class="n">PreTrainedTokenizerBase</span> <span class="o">=</span> <span class="n">AutoTokenizer</span><span class="p">.</span><span class="nf">from_pretrained</span><span class="p">(</span><span class="n">model_name</span><span class="p">)</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">tokenizer</span><span class="p">.</span><span class="n">pad_token</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">tokenizer</span><span class="p">.</span><span class="n">eos_token</span>
+
+    <span class="k">def</span> <span class="nf">clean_data</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">,</span>
+        <span class="n">dataset</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Dataset</span><span class="p">,</span> <span class="n">DatasetDict</span><span class="p">],</span>
+        <span class="n">cutoff</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2000</span>
+        <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">Dataset</span><span class="p">,</span> <span class="n">DatasetDict</span><span class="p">]:</span>
+        <span class="n">dataset</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">.</span><span class="nf">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="nf">len</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="sh">"</span><span class="s">text</span><span class="sh">"</span><span class="p">].</span><span class="nf">strip</span><span class="p">())</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">dataset</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">.</span><span class="nf">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="nf">len</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="sh">"</span><span class="s">text</span><span class="sh">"</span><span class="p">])</span> <span class="o">&lt;</span> <span class="n">cutoff</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">dataset</span>
+
+    <span class="k">def</span> <span class="nf">tokenize_text</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">,</span> 
+        <span class="n">prompt</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> 
+        <span class="n">padding</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span><span class="p">,</span> 
+        <span class="n">truncation</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">tc</span><span class="p">.</span><span class="n">Tensor</span><span class="p">]:</span>
+        <span class="n">inputs</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">tokenizer</span><span class="p">(</span>
+            <span class="n">prompt</span><span class="p">,</span>
+            <span class="n">padding</span><span class="o">=</span><span class="n">padding</span><span class="p">,</span>
+            <span class="n">truncation</span><span class="o">=</span><span class="n">truncation</span><span class="p">,</span>
+            <span class="n">return_tensors</span><span class="o">=</span><span class="sh">"</span><span class="s">pt</span><span class="sh">"</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="nf">to_device</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">self</span><span class="p">.</span><span class="n">device</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">tokenize_dataset</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">,</span> 
+        <span class="n">dataset</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Dataset</span><span class="p">,</span> <span class="n">DatasetDict</span><span class="p">],</span> 
+        <span class="n">max_token_length</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">Dataset</span><span class="p">,</span> <span class="n">DatasetDict</span><span class="p">]:</span>
+        <span class="k">def</span> <span class="nf">tokenize_fn</span><span class="p">(</span><span class="n">batch</span><span class="p">):</span>
+            <span class="n">tokenized</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">tokenizer</span><span class="p">(</span>
+                <span class="n">batch</span><span class="p">[</span><span class="sh">"</span><span class="s">text</span><span class="sh">"</span><span class="p">],</span>
+                <span class="n">padding</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                <span class="n">truncation</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                <span class="n">max_length</span><span class="o">=</span><span class="n">max_token_length</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="n">tokenized</span>
+
+        <span class="n">data_tokenized</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">.</span><span class="nf">map</span><span class="p">(</span>
+            <span class="n">tokenize_fn</span><span class="p">,</span>
+            <span class="n">batched</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+            <span class="n">remove_columns</span><span class="o">=</span><span class="p">[</span><span class="sh">"</span><span class="s">text</span><span class="sh">"</span><span class="p">,</span> <span class="sh">"</span><span class="s">label</span><span class="sh">"</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">data_tokenized</span>
+    
+    <span class="k">def</span> <span class="nf">data_collator</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">,</span> 
+        <span class="n">mlm</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="bp">False</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DataCollatorForLanguageModeling</span><span class="p">:</span>
+        <span class="n">data_collator</span> <span class="o">=</span> <span class="nc">DataCollatorForLanguageModeling</span><span class="p">(</span>
+            <span class="n">tokenizer</span><span class="o">=</span><span class="n">self</span><span class="p">.</span><span class="n">tokenizer</span><span class="p">,</span>
+            <span class="n">mlm</span><span class="o">=</span><span class="n">mlm</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">data_collator</span>
+
+    <span class="k">def</span> <span class="nf">load_model</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PreTrainedModel</span><span class="p">:</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="n">AutoModelForCausalLM</span><span class="p">.</span><span class="nf">from_pretrained</span><span class="p">(</span>
+            <span class="n">self</span><span class="p">.</span><span class="n">model_name</span><span class="p">,</span>
+        <span class="p">).</span><span class="nf">to</span><span class="p">(</span><span class="n">self</span><span class="p">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">model</span><span class="p">.</span><span class="n">config</span><span class="p">.</span><span class="n">pad_token_id</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">tokenizer</span><span class="p">.</span><span class="n">pad_token_id</span>
+        <span class="k">return</span> <span class="n">model</span>
+    
+    <span class="k">def</span> <span class="nf">evaluate_model</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">,</span>
+        <span class="n">prompt</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">str</span><span class="p">],</span>
+        <span class="n">model</span><span class="p">:</span> <span class="n">PreTrainedModel</span><span class="p">,</span>
+        <span class="n">max_new_tokens</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">25</span><span class="p">,</span>
+        <span class="n">do_sample</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="bp">True</span><span class="p">,</span>
+        <span class="n">top_k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">25</span><span class="p">,</span>
+        <span class="n">top_p</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.95</span><span class="p">,</span>
+        <span class="n">temperature</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.7</span><span class="p">,</span>
+        <span class="n">repetition_penalty</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.1</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">tc</span><span class="p">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">GenerateOutput</span><span class="p">]:</span>
+        <span class="n">inputs</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">tokenize_text</span><span class="p">(</span><span class="n">prompt</span><span class="p">)</span>
+
+        <span class="n">model</span><span class="p">.</span><span class="nf">eval</span><span class="p">()</span>
+        <span class="k">with</span> <span class="n">tc</span><span class="p">.</span><span class="nf">no_grad</span><span class="p">():</span>
+            <span class="n">outputs</span> <span class="o">=</span> <span class="n">model</span><span class="p">.</span><span class="nf">generate</span><span class="p">(</span>
+                <span class="o">**</span><span class="n">inputs</span><span class="p">,</span> 
+                <span class="n">max_new_tokens</span><span class="o">=</span><span class="n">max_new_tokens</span><span class="p">,</span>
+                <span class="n">do_sample</span><span class="o">=</span><span class="n">do_sample</span><span class="p">,</span>
+                <span class="n">top_k</span><span class="o">=</span><span class="n">top_k</span><span class="p">,</span>
+                <span class="n">top_p</span><span class="o">=</span><span class="n">top_p</span><span class="p">,</span>
+                <span class="n">temperature</span><span class="o">=</span><span class="n">temperature</span><span class="p">,</span>
+                <span class="n">repetition_penalty</span><span class="o">=</span><span class="n">repetition_penalty</span><span class="p">,</span>
+                <span class="n">pad_token_id</span><span class="o">=</span><span class="n">self</span><span class="p">.</span><span class="n">tokenizer</span><span class="p">.</span><span class="n">pad_token_id</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">outputs</span>
+</code></pre></div></div>
+
+<p>I will omit the explanation of each method since most of these were explained in the previous post, but I will go over key differences. For decoders, we will use the Hugging Face class <code class="language-plaintext highlighter-rouge">AutoModelForCausalLM</code> since we are now dealing with a causal model, which means that the model depends on the previous information to generate the next word. This is the key difference between encoders and decoders. The next key difference is found in the method <code class="language-plaintext highlighter-rouge">tokenize_dataset</code>. We had previously made the default for padding <code class="language-plaintext highlighter-rouge">True</code>, but for decoders we make it <code class="language-plaintext highlighter-rouge">False</code>. The reason has to do with the length of the reviews. Since we are setting the max token length to be $128$ (see parameters), no padding will actually occur since this length is less than the total length of a review. Hence the token vector will be fully composed of tokens with no blank space and padding would be useless.</p>
+
+<p>We are also now using a pre-defined data collator initialized in the method <code class="language-plaintext highlighter-rouge">data_collator</code>, where we import the Hugging Face class <code class="language-plaintext highlighter-rouge">DataCollatorForLanguageModeling</code>. This collator automatically takes care of padding (if needed) and masking (as well as other things) for language models. For a causal languange model in particular, we set <code class="language-plaintext highlighter-rouge">mlm=False</code>, which tells the collator that the model should be trying to predict the next token. If true, the collator would follow BERT’s stragety of data preparation. There is actually a Hugging Face class called <code class="language-plaintext highlighter-rouge">DataCollatorForCausalLM</code>, which is used primarily for text generation models, but I am working with an older version of the transformers library where it is not yet available.</p>
+
+<p>Another difference is that we have now included an <code class="language-plaintext highlighter-rouge">evaluate_model</code> method. As one can infer, it is used to evaluate the model using new, unseen data, but now we have different parameters to consider. Let’s go over each individual parameter in <code class="language-plaintext highlighter-rouge">model.generate()</code>:</p>
+
+<ol>
+  <li>max_new_tokens = $25$
+    <ul>
+      <li>This is the total amount of tokens that will be used in the text generation.</li>
+    </ul>
+  </li>
+  <li>do_sample = True
+    <ul>
+      <li>Tells model to sample from probability distribution instead of picking the highest-probability token.</li>
+      <li>do_sample = False $\rightarrow$ deterministic.</li>
+      <li>do_sample = True $\rightarrow$ random sampling.</li>
+    </ul>
+  </li>
+  <li>top_k = $25$
+    <ul>
+      <li>Sorts logits, keeps top $25$ most probable tokens, and draws samples from them.</li>
+      <li>Lower k $\rightarrow$ more deterministic.</li>
+      <li>Higher k $\rightarrow$ more random.</li>
+    </ul>
+  </li>
+  <li>top_p = $0.95$
+    <ul>
+      <li>Keeps the smallest set of tokens whose cumulative probability $\ge 0.95$.</li>
+      <li>Can be used in conjunction with top_k, which amounts to picking tokens that intersect with these two conditions.</li>
+      <li>Helps adapt to uncertainty by keeping the token selection dynamic since it is based on a probability mass as opposed to a fixed number.</li>
+    </ul>
+  </li>
+  <li>temperature = $0.7$
+    <ul>
+      <li>Scales softmax distribution before sampling.</li>
+      <li>Lower T $\rightarrow$ more deterministic.</li>
+      <li>Higher T $\rightarrow$ more random.</li>
+    </ul>
+  </li>
+  <li>repetition_penalty = $1.1$
+    <ul>
+      <li>Discourages the same token from reappearing by scaling all logits that have already been used by some value $&gt; 1$.</li>
+      <li>This occurs when there is a lack of sampling diversity, which causes reinforcement of certain phrases/tokens.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>Now, we look at the TrainingArguments and Trainer classes:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">training_args</span> <span class="o">=</span> <span class="nc">TrainingArguments</span><span class="p">(</span>
+    <span class="n">output_dir</span><span class="o">=</span><span class="n">cfg</span><span class="p">.</span><span class="n">res_path</span><span class="p">,</span>
+    <span class="n">overwrite_output_dir</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+    <span class="n">report_to</span><span class="o">=</span><span class="sh">"</span><span class="s">none</span><span class="sh">"</span><span class="p">,</span>
+    <span class="n">eval_strategy</span><span class="o">=</span><span class="n">cfg</span><span class="p">.</span><span class="n">strategy</span><span class="p">,</span>
+    <span class="n">save_strategy</span><span class="o">=</span><span class="n">cfg</span><span class="p">.</span><span class="n">strategy</span><span class="p">,</span>
+    <span class="n">logging_strategy</span><span class="o">=</span> <span class="n">cfg</span><span class="p">.</span><span class="n">strategy</span><span class="p">,</span>
+    <span class="n">learning_rate</span><span class="o">=</span><span class="n">cfg</span><span class="p">.</span><span class="n">lr</span><span class="p">,</span>
+    <span class="n">per_device_train_batch_size</span><span class="o">=</span><span class="n">cfg</span><span class="p">.</span><span class="n">train_batch_size</span><span class="p">,</span>
+    <span class="n">per_device_eval_batch_size</span><span class="o">=</span><span class="n">cfg</span><span class="p">.</span><span class="n">eval_batch_size</span><span class="p">,</span>
+    <span class="n">num_train_epochs</span><span class="o">=</span><span class="n">cfg</span><span class="p">.</span><span class="n">epochs</span><span class="p">,</span>
+    <span class="n">warmup_ratio</span><span class="o">=</span><span class="n">cfg</span><span class="p">.</span><span class="n">warmup_ratio</span><span class="p">,</span>
+    <span class="n">seed</span><span class="o">=</span><span class="n">cfg</span><span class="p">.</span><span class="n">seed</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>The TrainingArguments parameters are mostly the same as for the encoder. One big difference is the parameter <code class="language-plaintext highlighter-rouge">warmup_ratio</code>. This parameter controls the learning rate at the start of the training by slowly ramping up the learning rate. It initially starts the learning rate at $0$, then linearly increases it until it reaches the max learning rate (chosen by user) and decays from there. The warmup length is given in steps, which is taken by scaling the total steps by the warmup ratio. The purpose of this parameter is to gradually change the model weights at the start of training since the weights are not yet stable.</p>
+
+<p>The main body of the Trainer is essentially the same as before, expect the last two lines are replaced by the data collator. In this case, we choose to not pass in any metrics since we will be calculating the perplexity of the evaluation loss (explained later). The Trainer looks like the following:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">trainer</span> <span class="o">=</span> <span class="nc">Trainer</span><span class="p">(</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+    <span class="n">args</span><span class="o">=</span><span class="n">training_args</span><span class="p">,</span>
+    <span class="n">train_dataset</span><span class="o">=</span><span class="n">data_tokenized</span><span class="p">[</span><span class="sh">"</span><span class="s">train</span><span class="sh">"</span><span class="p">].</span><span class="nf">shuffle</span><span class="p">(</span><span class="n">seed</span><span class="o">=</span><span class="n">cfg</span><span class="p">.</span><span class="n">seed</span><span class="p">).</span><span class="nf">select</span><span class="p">(</span><span class="nf">range</span><span class="p">(</span><span class="n">cfg</span><span class="p">.</span><span class="n">train_size</span><span class="p">)),</span>
+    <span class="n">eval_dataset</span><span class="o">=</span><span class="n">data_tokenized</span><span class="p">[</span><span class="sh">"</span><span class="s">test</span><span class="sh">"</span><span class="p">].</span><span class="nf">shuffle</span><span class="p">(</span><span class="n">seed</span><span class="o">=</span><span class="n">cfg</span><span class="p">.</span><span class="n">seed</span><span class="p">).</span><span class="nf">select</span><span class="p">(</span><span class="nf">range</span><span class="p">(</span><span class="n">cfg</span><span class="p">.</span><span class="n">val_size</span><span class="p">)),</span>
+    <span class="n">data_collator</span><span class="o">=</span><span class="n">data_collator</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>As before, we pass in the model, the training arguments, the different datasets, and the collator (new!) into the trainer. These datasets are huge so we shuffe, seed, and select a subset of the train ($3000$ samples) and test ($500$ samples) set as a demonstration. In actual fine-tuning, it’s essential to use all the available data. Now, all we have to do is run <code class="language-plaintext highlighter-rouge">trainer.train()</code> and the model begins to train.</p>
+
+<p>For our example, we get the following metrics:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Epoch 	Training Loss   Validation Loss
+  1 	   3.870400 	    3.709818
+  2 	   3.685000 	    3.707382
+  3 	   3.607300 	    3.709974
+</code></pre></div></div>
+
+<p>While the training loss is decreasing, it is not decreasing by much. On the other hand, the validation loss starts to decrease then slightly increases. While this may seem troubling at first glance, it is actually not that bad. GPT-2 is actually a very large model, which means that fine-tuning will only slightly decrease the loss. Not to mention, we are only fine-tuning with $3000$ samples. This is such a small sample size in comparison to the data used to train the model that such a small step size in training loss is to be expected. This also partly explains the increase in validation loss during the last epoch since the sample size for the validation dataset is $500$. The change in loss is in the hundredth decimal place, which for most applications can be attributed to small fluctuations (a.k.a. noise). There is a possibility of slight overfitting, but I don’t think there is enough proof. More tests need to be considered with a larger sample size to determine if the model is indeed overfitting.</p>
+
+<p>We can also calculate the perplexity to determine how well the model learned. Perplexity is a way to measure how well a model can predict the next token <a class="citation" href="#jozefowicz2016exploring">[5]</a>. It is calculated as the exponent of the average cross-entropy loss. In other words,</p>
+
+\[\mathrm{perplexity} = e^{\mathrm{loss}}.\]
+
+<p>The lower the perplexity, the less token ‘‘choices’’ the model has, hence the more accurate the model prediction. The higher the perplexity, the more token ‘‘choices’’, the more uncertain the model is of its predictions. Ideally, the perplexity has an exponential decay behavior as the model learns. Here is a plot of the perplexity for the training and validation phases:</p>
+
+<p><img src="/assets/images/gpt_2_gen/perplexity_curve.png" alt="train_perplexity" /></p>
+
+<p>From the plot, we see that the training perplexity does indeed follow an exponential decay behavior. On the other hand, the validation perplexity increases, which is attributed to what was already mentioned above. Note that steps is the global steps taken during the fine-tuning of the model.</p>
+
+<p>Now that our model is fine-tuned, let’s see how well it can autocomplete movie reviews. Here are beginning of reviews that I created:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reviews = [
+    "This movie was terrible. The acting was mediocre.",
+    "I highly recommend this movie to everyone.",
+    "This was a great movie. I wish it was longer.",
+    "I do not recommend this movie. The actors are terrible.",
+]
+</code></pre></div></div>
+
+<p>In this example, I chose to make the sentiment obvious to see how well the model could understand this and expand on the review. The code that calls the <code class="language-plaintext highlighter-rouge">evaluate_model</code> method and prints out the generated text is:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">outputs</span> <span class="o">=</span> <span class="n">inst</span><span class="p">.</span><span class="nf">evaluate_model</span><span class="p">(</span><span class="n">reviews</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">seq</span> <span class="ow">in</span> <span class="nf">enumerate</span><span class="p">(</span><span class="n">outputs</span><span class="p">):</span>
+    <span class="nf">print</span><span class="p">(</span><span class="sa">f</span><span class="sh">"</span><span class="s">Seq. </span><span class="si">{</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="si">}</span><span class="s">:</span><span class="sh">"</span><span class="p">)</span>
+    <span class="nf">print</span><span class="p">(</span><span class="sa">f</span><span class="sh">"</span><span class="si">{</span><span class="n">inst</span><span class="p">.</span><span class="n">tokenizer</span><span class="p">.</span><span class="nf">decode</span><span class="p">(</span><span class="n">seq</span><span class="p">,</span> <span class="n">skip_special_tokens</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span><span class="si">}</span><span class="sh">"</span><span class="p">)</span>
+    <span class="nf">print</span><span class="p">(</span><span class="sh">"</span><span class="se">\n</span><span class="sh">"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Here are the outputs of the model:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Seq. 1:
+This movie was terrible. The acting was mediocre.It is a very good horror film, but I think it will appeal to many people as well (especially the young ones).
+
+Seq. 2:
+I highly recommend this movie to everyone.
+
+If you want a good laugh, go with the story and characters of The Sopranos. If not then read
+
+Seq. 3:
+This was a great movie. I wish it was longer. It is not as good as the first one, but this time you can see why people are so angry and upset about what
+
+Seq. 4:
+I do not recommend this movie. The actors are terrible. They had an awful time with the acting in it, and I have yet to see a single scene where they did anything other
+</code></pre></div></div>
+
+<p>Overall, the expanded reviews generated by the model seem to somewhat fit the sentiment of the input reviews. There are no issues with Sequence 1 and 4, but we should analyze the other two. Sequence 2 seems to deviate from the inital sentiment. It goes on to talk about The Sopranos even though the input text did not mention anything about that show. Sequence 3 seems to not quite understand what sentiment it is supposed to show, but this is because the sentence ‘‘I wish it was longer.’’ can be interpreted as a negative sentiment even though the first sentence has a positive sentiment. So the output seems to make sense.</p>
+
+<p>Let’s try some harder reviews.</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reviews = [
+    "Wow! I was suprised by how much ",
+    "This film was such a surprise. ",
+    "I never thought I would ",
+    "This movie makes me want to yell "
+]
+</code></pre></div></div>
+
+<p>As you can tell, these reviews are more difficult to determine sentiment from. They are ambiguous as to whether they think the movie was good or bad. Let’s see how well the model categorizes them:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Seq. 1:
+Wow! I was suprised by how much vernacular this film used to be, and also the way it kept me guessing. For starters: How would you like a
+
+Seq. 2:
+This film was such a surprise. A beautiful movie with some great characters, the director and actors had wonderful chemistry to create this story that is very entertaining - even
+
+Seq. 3:
+I never thought I would This movie was so bad, but it is. It's not that BAD though! Just an awful story with no redeeming
+
+Seq. 4:
+This movie makes me want to yell The Devil is a Bad Idea. It's just terrible, it has no suspense and the plot doesn't move at all!
+</code></pre></div></div>
+
+<p>In this case, the model does a decent job in generating reviews with varying sentiment. This may be because the second batch gave the model more flexibility in producing reviews that kept to one sentiment, as opposed to giving it a sentiment and making it work off that. Sequence 3 and 4 do seem to have fluidity issues, but they still kept a consistent sentiment. Overall, the text generation for both batches were pretty good for the amount of data we used to fine-tune the model.</p>
+
+<p>In general, the model’s performance can be improved by fine-tuning with a larger dataset. I purposely chose to cap the training set at $3000$ samples because my GPU kept running out of memory when running for a larger sample size over $3$ epochs. This can potentially lead to issues since it is known that fine-tuning with small datasets can potentially lead to overfitting or ‘‘catastrophic forgetting’’, which is where the model loses previously learned information <a class="citation" href="#howard2018universal">[6]</a>. Another way to improve performance is to increase <code class="language-plaintext highlighter-rouge">max_token_len</code>. I chose $128$, but ideally, one should choose $256$ or $512$. The reason I had to go with $128$ was also because of my GPU. I did try running the fine-tuning on my CPU with larger sample sizes and/or max token lengths, but it was not feasible due to time constraints. Another test that can be done is training with more epochs to get more steps on the perplexity curves. This could help rule out the model overfitting. Of course, one can also experiment with varying the learning rate, batch size, and warmup ratio, or include weight decay.</p>
+
+<p>As a sidenote, a common way to avoid catastrophic forgetting is using  parameter-efficient fine-tuning techniques such as Low-Rank Adaptation (LoRA) <a class="citation" href="#hu2021lora">[7]</a>. This technique works by freezing the model weights and fine-tuning with a batch of small low-rank matrices (called LoRA adapter) instead of the full model parameter set, making the fine-tuning process much faster and more memory-efficient. This drastically reduces the number of parameters that need to be trained, as well as keeps the base model unchanged. Afterwards, if one chooses to change the behavior of the model, the LoRA adapter can be swapped out and the base model can once again be fine-tuned with a different LoRA adapter.</p>
+
+<p>In summary, we have learned how to fine-tuned a GPT-2 model to understand how reviews sound (good or bad) and determine what kind of sentence it should generate in continuation. We also learned about perplexity and how it can be used to describe the effectiveness of a model to generate accurate text. Overall, the model performed well on reviews that had pre-defined and obvious sentiment, but did not do so well with ambiguous reviews, which was expected. There is room for increasing the model’s capability of producing better review continuations, as well as making better conclusions on ambiguous inputs.</p>
+
+<p>The code and plots presented in this post can be found on my Github under the <a href="https://github.com/AJG91/gpt-2-gen" title="gpt-2-gen-repo">gpt-2-gen</a> repo <a class="citation" href="#Garcia2025GPT2Gen">[8]</a>. Feel free to reach out if you have any questions about what we covered this week. I’ll be taking a few weeks off, but will come back with more about building and employing decoders. Stay tuned!</p>
+
+<ol class="bibliography"><li><span id="bahdanau2014neural">[1] Dzmitry Bahdanau, Kyunghyun Cho, &amp; Yoshua Bengio, <i>Neural Machine Translation by Jointly Learning to Align and Translate</i>, arXiv preprint arXiv:1409.0473, 2014. </span></li>
+<li><span id="vaswani2017attention">[2] Ashish Vaswani, Noam Shazeer, Niki Parmar, et al., <i>Attention is All you Need</i>, Advances in Neural Information Processing Systems, 2017. </span></li>
+<li><span id="bengio2003neural">[3] Yoshua Bengio, Réjean Ducharme, Pascal Vincent, &amp; Christian Jauvin, <i>A Neural Probabilistic Language Model</i>, Journal of Machine Learning Research, 2003. </span></li>
+<li><span id="radford2019language">[4] Alec Radford, Jeffrey Wu, Rewon Child, et al., <i>Language models are unsupervised multitask learners</i>, OpenAI blog, 2019. </span></li>
+<li><span id="jozefowicz2016exploring">[5] Rafal Jozefowicz, Oriol Vinyals, Mike Schuster, et al., <i>Exploring the Limits of Language Modeling</i>, arXiv preprint arXiv:1602.02410, 2016. </span></li>
+<li><span id="howard2018universal">[6] Jeremy Howard &amp; Sebastian Ruder, <i>Universal Language Model Fine-tuning for Text Classification</i>, Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), 2018. DOI: 10.18653/v1/P18-1031.</span></li>
+<li><span id="hu2021lora">[7] Edward J. Hu, Yelong Shen, Phillip Wallis, et al., <i>LoRA: Low-Rank Adaptation of Large Language Models</i>, arXiv preprint arXiv:2106.09685, 2021. </span></li>
+<li><span id="Garcia2025GPT2Gen">[8] Alberto J. Garcia, <i>GPT-Style Language Model</i>, 2025. Available at: https://github.com/AJG91/gpt-2-gen.</span></li></ol>
+<p><a href="/" class="btn">⬅ Back to Home</a></p>
+
+        
+      </section>
+
+      <footer class="page__meta">
+        
+        
+
+
+        
+
+  <p class="page__date"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Updated:</strong> <time class="dt-published" datetime="2025-11-30T00:00:00-08:00">November 30, 2025</time></p>
+
+      </footer>
+
+      
+
+      
+  <nav class="pagination">
+    
+      <a href="/posts/large-language-models/encoder-distilbert-classifier/" class="pagination--pager" title="Natural language models: DistilBERT sentiment classifier">Previous</a>
+    
+    
+      <a href="/posts/large-language-models/basic-chatbot/" class="pagination--pager" title="Basic chatbot: Keeping context awareness">Next</a>
+    
+  </nav>
+
+
+    </div>
+
+    
+  </article>
+
+  
+  
+</div>
+
+      
+    </div>
+
+    
+
+    <div id="footer" class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        
+
+<div class="page__footer-follow">
+  <ul class="social-icons">
+    
+
+    
+
+    
+      <li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+    
+  </ul>
+</div>
+
+
+<div class="page__footer-copyright">&copy; 2026 <a href="https://ajg91.github.io/">AJG&#39;s Homepage</a>. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/jekyll-themes/minimal-mistakes/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+
+  </body>
+</html>

@@ -1,0 +1,517 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.27.3 by Michael Rose
+  Copyright 2013-2025 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE
+-->
+
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin _includes/seo.html --><title>LoRA model: Adapting GPT-2 - AJG’s Homepage</title>
+<meta name="description" content="April 19, 2026  This week I will walk through the process of training a model using a low-rank adaptation (LoRA). For this, we will be using the GPT-2 model we’ve aleady used in previous posts. We cannot use the GPT-4.1 nano model since it does not come with adjustable weights.  LoRA is a parameter-efficient fine-tuning (PEFT) technique that introduces small trainable low-rank matrices into layers of a pretrained model while keeping the original model weights frozen (retains pre-trained knowledge) [2]. The purpose is to change the model behavior without retraining all the model parameters. It works by training the LoRA adapter (a.k.a. weights) on the information we want to include in the base model and then merging it into the model before inference. Essentially, we inject information into large language models (LLMs) by inserting neural layers between the transformer layers and modify the weights using LoRA, which are a very small fraction compared to the model weights. This is ideal when you want to take a model and make it domain specific instead of expending resources in retraining and adjusting the billions of parameters found in current models.  As always, the first step is to define our parameters in a .yaml file and use SimpleNamespace to store them. In this case, the parameters are the following:  {   &quot;model_name&quot;: &quot;gpt2&quot;,   &quot;seed&quot;: 42,   &quot;max_token_length&quot;: 128,   &quot;lr&quot;: 0.0001,   &quot;warmup_ratio&quot;: 0.0,   &quot;epochs&quot;: 500,   &quot;train_batch_size&quot;: 1,   &quot;strategy&quot;: &quot;steps&quot;,   &quot;logging_steps&quot;: 5,   &quot;res_path&quot;: &quot;../results/&quot; }   Most of these parameters should be familiar from previous posts so I will not go over them. Note that I am logging the training loss every $5$ steps.  Let’s first look as to how we are building the dataset that will be used to train the LoRA adapter. There are many different ways that a dataset can be built. In this case, I just wrapped a list of Q&amp;As in a function and converted it into a Dataset using the datasets library provided by Hugging Face. Here is the list:  texts = [     &quot;Q: How do transformers work?\nA: Transformers process sequences using self-attention.&quot;,     &quot;Q: What does physics explain?\nA: Physics explains natural phenomena using mathematical models.&quot;,     &quot;Q: What do machine learning models do?\nA: Machine learning models learn patterns from data.&quot;,     &quot;Q: How do transformers work?\nA: Transformers process sequences using self-attention mechanisms.&quot;,     &quot;Q: What is self-attention?\nA: Self-attention allows tokens in a sequence to attend to each other.&quot;, ]   Notice the format of the data. I purposely wrote Q to label the question, included a line break \n and an A to label the answer. The reason for this is so that the model can know what is meant as a question and what is the answer. While this may not be necessary for more recent models, since I am using GPT-2 I wanted to be sure that the data was properly labeled before passing it into the model. With the data ready, let’s move to creating the LoRA model.  For this task we will use the PEFT library from the Hugging Face ecosystem. While we will be focusing exclusively on LoRA, this library contains many different methods for adapting models. The function we will use is:  def create_lora_model(model):     config = LoraConfig(         r=8,         lora_alpha=16,         target_modules=[&quot;c_attn&quot;],         lora_dropout=0.1,         bias=&quot;none&quot;,         task_type=&quot;CAUSAL_LM&quot;,         fan_in_fan_out=True,     )     return get_peft_model(model, config)   This function takes a model and applies a LoRA configuration. Let’s look at the parameters:     r            The LoRA rank. A higher rank means more parameters to train, while a lower rank means less parameters.           lora_alpha            The scaling factor. This parameter controls how much influence the LoRA adapter contributes relative to the original (frozen) weights.           target_modules            Designate which modules with get augmented by the LoRA adapter. In this case, c_attn refers to the attention projection modules in GPT-2, whose job is to map the hidden states to vectors used for self-attention and vice versa.           lora_dropout            Standard dropout used in machine learning.           bias            Standard bias used in machine learning.           task_type            Tells PEFT what kind of model you are passing in.           fan_in_fan_out            Dictates how the model weights are stored. For GPT-2, this should be set to True.           From here, the LoRA model setup is complete. The class that contains all the GPT-2 functionality was covered in great detail in this post. While I’ve made some small modifications since then, I will only show where I create the LoRA model (see the file model_local.py for more information). The LoRA model is built in the class constructor and looks like the following:  train_model = AutoModelForCausalLM.from_pretrained(model_name) self.lora_model = create_lora_model(train_model)   That’s all that’s needed for setting up a LoRA model. Now, all we have to do is evaluate the model, which is done in the Jupyter Notebook (and in this previous post). Let’s look at the parameters of the base and LoRA model. The base model:  model = LocalLM(cfg.model_name)  total_params = sum(p.numel() for p in model.model.parameters()) trainable_params = sum(p.numel() for p in model.model.parameters() if p.requires_grad)  print(f&quot;Total parameters: {total_params:,}&quot;) print(f&quot;Trainable parameters: {trainable_params:,}&quot;)   The output is:  Total parameters: 124,439,808 Trainable parameters: 124,439,808   So the base model has over one hundred million parameters and they are all trainable. The LoRA model:  model.lora_model.print_trainable_parameters()   The output is:  trainable params: 294,912 || all params: 124,734,720 || trainable%: 0.2364   Now, the total trainable parameters in the LoRA model are $0.24\%$ of the total trainable parameters in the base model. This is a huge difference computationally and much more lightweight overall.  The evaluation set that we will use to evaluate the model is the following:  eval_prompts = [     &quot;Q: How do transformers work?\nA:&quot;,     &quot;Q: What does physics explain?\nA:&quot;,     &quot;Q: What do machine learning models do?\nA:&quot;,     &quot;Q: What is a language model?\nA:&quot;,     &quot;Q: What is overfitting?\nA:&quot;,     &quot;Q: What is a LoRA adapter?\nA:&quot;, ]   As you may note, some of these questions are exactly the same questions as in the training set. The purpose is to make sure that the LoRA model is learning correctly, since we expect the model to output the same answer we trained it with. We also include some questions that are not in the dataset so we can see how well the model adapts to information it was not directly trained on. We evaluate these questions with the base model and with the LoRA model to see the difference in output:  Base model output: Q: How do transformers work? A: An inverted S is a function which takes three parameters, and multiplies it with the corresponding magnitude.  LoRA model output: Q: How do transformers work? A: Transformers process sequences using self-attention mechanisms. Transformers allow tokens in a sequence to attend each other   Base model output: Q: What does physics explain? A: It doesn&#39;t necessarily have to be physical. You could say the same thing about quantum mechanics, and  LoRA model output: Q: What does physics explain? A: Physics explains natural phenomena using mathematical models. Model results show that objects in a sequence do not exist,   Base model output: Q: What do machine learning models do? A: In the past, I&#39;ve discussed what we&#39;re talking about here. We can model a whole range  LoRA model output: Q: What do machine learning models do? A: Machine-learning model predictions learn patterns from data. Model results can be self-attributing or   Base model output: Q: What is a language model? A: Language models are the basic tools that allow you to create systems, algorithms, and procedures for using information  LoRA model output: Q: What is a language model? A: Machine learning models learn patterns from data. Model results are self-attentionable. Rational   Base model output: Q: What is overfitting? A: It&#39;s not a new problem. But if the players don&#39;t understand how to use it, then  LoRA model output: Q: What is overfitting? A: Over fitting allows an object to fit together in a fashion. Objects can be fitted without self-att   Base model output: Q: What is a LoRA adapter? A: It&#39;s basically the same as an XC line. The difference being that there are two different interfaces  LoRA model output: Q: What is a LoRA adapter? A: A self-attention mechanism allows tokens in an array to attend to each other. Tokens can be   We see that the LoRA model outputs the answers expected for the questions we trained it on, but the output for the questions we did not include in the training dataset are not adequately answered. While this may be worrisome, it is not surprising. GPT-2’s base capabilities are not as good as recent models. Since the base model for the LoRA adapter was GPT-2, it will most likely only outperform GPT-2 with data it is directly trained on. With a more advanced model, there are much better chances of successful extrapolation to information the LoRA adapter was not directly trained on. Either way, the LoRA model was successfully trained since it could reproduce the answers contained in the training dataset.  We have now learned how LLMs can be adapted in practice using parameter-efficient fine-tuning. We took an existing model and wrapped it with a LoRA adapter. Using this model, we fine-tuned on a small dataset over $500$ epochs and tested the outputs using an evaluation dataset. From the results, we see that the LoRA model out-performed the base model on the data that it was trained on, but did not effectively extrapolate to other information. This was expected behavior since we used GPT-2 as the base model. A non-exhausted list of failure nodes are: training for a small number of epochs, not including enough weights in the LoRA adapter, not having a properly constructed dataset, and cross-contamination between the base and LoRA models (for testing outputs). Overall, we gained hands-on experience with a fine-tuning strategy widely used in the LLM work.  Some extensions involve using a larger base model that is trained on millions of domain-specific examples. With enough resources, one could set up a training scheme that involves hyperparameter tuning to ensure the best adapter is chosen. Additionally, multiple adapters can be trained for various tasks and used in conjunction. This enables flexibility and customization on the outputs without retraining the base model or having one large LoRA model.  The code presented in this post can be found on my Github under the lora-fine-tune repo [2]. Feel free to reach out if you have any questions about what we covered this week. Next time we will combine RAG with a LoRA-adapter model into one framework. Stay tuned!  [1] Edward J. Hu, Yelong Shen, Phillip Wallis, et al., LoRA: Low-Rank Adaptation of Large Language Models, arXiv preprint arXiv:2106.09685, 2021.  [2] Alberto J. Garcia, Parameter-Efficient Fine-Tuning with LoRA, 2026. Available at: https://github.com/AJG91/lora-fine-tune. ⬅ Back to Home">
+
+
+
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="AJG&#39;s Homepage">
+<meta property="og:title" content="LoRA model: Adapting GPT-2">
+<meta property="og:url" content="https://ajg91.github.io//posts/large-language-models/lora-adapter/">
+
+
+  <meta property="og:description" content="April 19, 2026  This week I will walk through the process of training a model using a low-rank adaptation (LoRA). For this, we will be using the GPT-2 model we’ve aleady used in previous posts. We cannot use the GPT-4.1 nano model since it does not come with adjustable weights.  LoRA is a parameter-efficient fine-tuning (PEFT) technique that introduces small trainable low-rank matrices into layers of a pretrained model while keeping the original model weights frozen (retains pre-trained knowledge) [2]. The purpose is to change the model behavior without retraining all the model parameters. It works by training the LoRA adapter (a.k.a. weights) on the information we want to include in the base model and then merging it into the model before inference. Essentially, we inject information into large language models (LLMs) by inserting neural layers between the transformer layers and modify the weights using LoRA, which are a very small fraction compared to the model weights. This is ideal when you want to take a model and make it domain specific instead of expending resources in retraining and adjusting the billions of parameters found in current models.  As always, the first step is to define our parameters in a .yaml file and use SimpleNamespace to store them. In this case, the parameters are the following:  {   &quot;model_name&quot;: &quot;gpt2&quot;,   &quot;seed&quot;: 42,   &quot;max_token_length&quot;: 128,   &quot;lr&quot;: 0.0001,   &quot;warmup_ratio&quot;: 0.0,   &quot;epochs&quot;: 500,   &quot;train_batch_size&quot;: 1,   &quot;strategy&quot;: &quot;steps&quot;,   &quot;logging_steps&quot;: 5,   &quot;res_path&quot;: &quot;../results/&quot; }   Most of these parameters should be familiar from previous posts so I will not go over them. Note that I am logging the training loss every $5$ steps.  Let’s first look as to how we are building the dataset that will be used to train the LoRA adapter. There are many different ways that a dataset can be built. In this case, I just wrapped a list of Q&amp;As in a function and converted it into a Dataset using the datasets library provided by Hugging Face. Here is the list:  texts = [     &quot;Q: How do transformers work?\nA: Transformers process sequences using self-attention.&quot;,     &quot;Q: What does physics explain?\nA: Physics explains natural phenomena using mathematical models.&quot;,     &quot;Q: What do machine learning models do?\nA: Machine learning models learn patterns from data.&quot;,     &quot;Q: How do transformers work?\nA: Transformers process sequences using self-attention mechanisms.&quot;,     &quot;Q: What is self-attention?\nA: Self-attention allows tokens in a sequence to attend to each other.&quot;, ]   Notice the format of the data. I purposely wrote Q to label the question, included a line break \n and an A to label the answer. The reason for this is so that the model can know what is meant as a question and what is the answer. While this may not be necessary for more recent models, since I am using GPT-2 I wanted to be sure that the data was properly labeled before passing it into the model. With the data ready, let’s move to creating the LoRA model.  For this task we will use the PEFT library from the Hugging Face ecosystem. While we will be focusing exclusively on LoRA, this library contains many different methods for adapting models. The function we will use is:  def create_lora_model(model):     config = LoraConfig(         r=8,         lora_alpha=16,         target_modules=[&quot;c_attn&quot;],         lora_dropout=0.1,         bias=&quot;none&quot;,         task_type=&quot;CAUSAL_LM&quot;,         fan_in_fan_out=True,     )     return get_peft_model(model, config)   This function takes a model and applies a LoRA configuration. Let’s look at the parameters:     r            The LoRA rank. A higher rank means more parameters to train, while a lower rank means less parameters.           lora_alpha            The scaling factor. This parameter controls how much influence the LoRA adapter contributes relative to the original (frozen) weights.           target_modules            Designate which modules with get augmented by the LoRA adapter. In this case, c_attn refers to the attention projection modules in GPT-2, whose job is to map the hidden states to vectors used for self-attention and vice versa.           lora_dropout            Standard dropout used in machine learning.           bias            Standard bias used in machine learning.           task_type            Tells PEFT what kind of model you are passing in.           fan_in_fan_out            Dictates how the model weights are stored. For GPT-2, this should be set to True.           From here, the LoRA model setup is complete. The class that contains all the GPT-2 functionality was covered in great detail in this post. While I’ve made some small modifications since then, I will only show where I create the LoRA model (see the file model_local.py for more information). The LoRA model is built in the class constructor and looks like the following:  train_model = AutoModelForCausalLM.from_pretrained(model_name) self.lora_model = create_lora_model(train_model)   That’s all that’s needed for setting up a LoRA model. Now, all we have to do is evaluate the model, which is done in the Jupyter Notebook (and in this previous post). Let’s look at the parameters of the base and LoRA model. The base model:  model = LocalLM(cfg.model_name)  total_params = sum(p.numel() for p in model.model.parameters()) trainable_params = sum(p.numel() for p in model.model.parameters() if p.requires_grad)  print(f&quot;Total parameters: {total_params:,}&quot;) print(f&quot;Trainable parameters: {trainable_params:,}&quot;)   The output is:  Total parameters: 124,439,808 Trainable parameters: 124,439,808   So the base model has over one hundred million parameters and they are all trainable. The LoRA model:  model.lora_model.print_trainable_parameters()   The output is:  trainable params: 294,912 || all params: 124,734,720 || trainable%: 0.2364   Now, the total trainable parameters in the LoRA model are $0.24\%$ of the total trainable parameters in the base model. This is a huge difference computationally and much more lightweight overall.  The evaluation set that we will use to evaluate the model is the following:  eval_prompts = [     &quot;Q: How do transformers work?\nA:&quot;,     &quot;Q: What does physics explain?\nA:&quot;,     &quot;Q: What do machine learning models do?\nA:&quot;,     &quot;Q: What is a language model?\nA:&quot;,     &quot;Q: What is overfitting?\nA:&quot;,     &quot;Q: What is a LoRA adapter?\nA:&quot;, ]   As you may note, some of these questions are exactly the same questions as in the training set. The purpose is to make sure that the LoRA model is learning correctly, since we expect the model to output the same answer we trained it with. We also include some questions that are not in the dataset so we can see how well the model adapts to information it was not directly trained on. We evaluate these questions with the base model and with the LoRA model to see the difference in output:  Base model output: Q: How do transformers work? A: An inverted S is a function which takes three parameters, and multiplies it with the corresponding magnitude.  LoRA model output: Q: How do transformers work? A: Transformers process sequences using self-attention mechanisms. Transformers allow tokens in a sequence to attend each other   Base model output: Q: What does physics explain? A: It doesn&#39;t necessarily have to be physical. You could say the same thing about quantum mechanics, and  LoRA model output: Q: What does physics explain? A: Physics explains natural phenomena using mathematical models. Model results show that objects in a sequence do not exist,   Base model output: Q: What do machine learning models do? A: In the past, I&#39;ve discussed what we&#39;re talking about here. We can model a whole range  LoRA model output: Q: What do machine learning models do? A: Machine-learning model predictions learn patterns from data. Model results can be self-attributing or   Base model output: Q: What is a language model? A: Language models are the basic tools that allow you to create systems, algorithms, and procedures for using information  LoRA model output: Q: What is a language model? A: Machine learning models learn patterns from data. Model results are self-attentionable. Rational   Base model output: Q: What is overfitting? A: It&#39;s not a new problem. But if the players don&#39;t understand how to use it, then  LoRA model output: Q: What is overfitting? A: Over fitting allows an object to fit together in a fashion. Objects can be fitted without self-att   Base model output: Q: What is a LoRA adapter? A: It&#39;s basically the same as an XC line. The difference being that there are two different interfaces  LoRA model output: Q: What is a LoRA adapter? A: A self-attention mechanism allows tokens in an array to attend to each other. Tokens can be   We see that the LoRA model outputs the answers expected for the questions we trained it on, but the output for the questions we did not include in the training dataset are not adequately answered. While this may be worrisome, it is not surprising. GPT-2’s base capabilities are not as good as recent models. Since the base model for the LoRA adapter was GPT-2, it will most likely only outperform GPT-2 with data it is directly trained on. With a more advanced model, there are much better chances of successful extrapolation to information the LoRA adapter was not directly trained on. Either way, the LoRA model was successfully trained since it could reproduce the answers contained in the training dataset.  We have now learned how LLMs can be adapted in practice using parameter-efficient fine-tuning. We took an existing model and wrapped it with a LoRA adapter. Using this model, we fine-tuned on a small dataset over $500$ epochs and tested the outputs using an evaluation dataset. From the results, we see that the LoRA model out-performed the base model on the data that it was trained on, but did not effectively extrapolate to other information. This was expected behavior since we used GPT-2 as the base model. A non-exhausted list of failure nodes are: training for a small number of epochs, not including enough weights in the LoRA adapter, not having a properly constructed dataset, and cross-contamination between the base and LoRA models (for testing outputs). Overall, we gained hands-on experience with a fine-tuning strategy widely used in the LLM work.  Some extensions involve using a larger base model that is trained on millions of domain-specific examples. With enough resources, one could set up a training scheme that involves hyperparameter tuning to ensure the best adapter is chosen. Additionally, multiple adapters can be trained for various tasks and used in conjunction. This enables flexibility and customization on the outputs without retraining the base model or having one large LoRA model.  The code presented in this post can be found on my Github under the lora-fine-tune repo [2]. Feel free to reach out if you have any questions about what we covered this week. Next time we will combine RAG with a LoRA-adapter model into one framework. Stay tuned!  [1] Edward J. Hu, Yelong Shen, Phillip Wallis, et al., LoRA: Low-Rank Adaptation of Large Language Models, arXiv preprint arXiv:2106.09685, 2021.  [2] Alberto J. Garcia, Parameter-Efficient Fine-Tuning with LoRA, 2026. Available at: https://github.com/AJG91/lora-fine-tune. ⬅ Back to Home">
+
+
+
+
+
+
+
+  <meta property="article:published_time" content="2026-04-19T00:00:00-07:00">
+
+
+
+
+
+
+<link rel="canonical" href="https://ajg91.github.io//posts/large-language-models/lora-adapter/">
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- end _includes/seo.html -->
+
+
+
+  <link href="/feed.xml" type="application/atom+xml" rel="alternate" title="AJG's Homepage Feed">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+  
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css"></noscript>
+
+
+
+    <script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$','$$'], ['\\[','\\]']]
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
+  </head>
+
+  <body class="layout--single" dir="ltr">
+    <nav class="skip-links">
+  <ul>
+    <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
+    <li><a href="#main" class="screen-reader-shortcut">Skip to content</a></li>
+    <li><a href="#footer" class="screen-reader-shortcut">Skip to footer</a></li>
+  </ul>
+</nav>
+
+    
+
+<div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        
+        <a class="site-title" href="/">
+          AJG&#39;s Homepage
+          
+        </a>
+        <ul class="visible-links"><li class="masthead__menu-item">
+              <a
+                href="/posts/"
+                
+                
+              >Posts</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/publications/"
+                
+                
+              >Publications</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/talks/"
+                
+                
+              >Talks</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/software/"
+                
+                
+              >Software</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/contact/"
+                
+                
+              >Contact Me</a>
+            </li></ul>
+        
+        <button class="greedy-nav__toggle hidden" type="button">
+          <span class="visually-hidden">Toggle menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+
+    <div class="initial-content">
+      
+
+
+
+
+  
+    
+
+
+
+<nav class="breadcrumbs">
+  <ol itemscope itemtype="https://schema.org/BreadcrumbList">
+    
+    
+    
+      
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/" itemprop="item"><span itemprop="name">Home</span></a>
+
+          <meta itemprop="position" content="1" />
+        </li>
+        <span class="sep">/</span>
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/posts" itemprop="item"><span itemprop="name">Posts</span></a>
+          <meta itemprop="position" content="2" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/large-language-models" itemprop="item"><span itemprop="name">Large language models</span></a>
+          <meta itemprop="position" content="3" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        <li class="current">LoRA model: Adapting GPT-2</li>
+      
+    
+  </ol>
+</nav>
+
+  
+
+
+<div id="main" role="main">
+  
+
+
+  <article class="page" itemscope itemtype="https://schema.org/CreativeWork">
+    <meta itemprop="headline" content="LoRA model: Adapting GPT-2">
+    <meta itemprop="description" content="April 19, 2026This week I will walk through the process of training a model using a low-rank adaptation (LoRA). For this, we will be using the GPT-2 model we’ve aleady used in previous posts. We cannot use the GPT-4.1 nano model since it does not come with adjustable weights.LoRA is a parameter-efficient fine-tuning (PEFT) technique that introduces small trainable low-rank matrices into layers of a pretrained model while keeping the original model weights frozen (retains pre-trained knowledge) [2]. The purpose is to change the model behavior without retraining all the model parameters. It works by training the LoRA adapter (a.k.a. weights) on the information we want to include in the base model and then merging it into the model before inference. Essentially, we inject information into large language models (LLMs) by inserting neural layers between the transformer layers and modify the weights using LoRA, which are a very small fraction compared to the model weights. This is ideal when you want to take a model and make it domain specific instead of expending resources in retraining and adjusting the billions of parameters found in current models.As always, the first step is to define our parameters in a .yaml file and use SimpleNamespace to store them. In this case, the parameters are the following:{  &quot;model_name&quot;: &quot;gpt2&quot;,  &quot;seed&quot;: 42,  &quot;max_token_length&quot;: 128,  &quot;lr&quot;: 0.0001,  &quot;warmup_ratio&quot;: 0.0,  &quot;epochs&quot;: 500,  &quot;train_batch_size&quot;: 1,  &quot;strategy&quot;: &quot;steps&quot;,  &quot;logging_steps&quot;: 5,  &quot;res_path&quot;: &quot;../results/&quot;}Most of these parameters should be familiar from previous posts so I will not go over them. Note that I am logging the training loss every $5$ steps.Let’s first look as to how we are building the dataset that will be used to train the LoRA adapter. There are many different ways that a dataset can be built. In this case, I just wrapped a list of Q&amp;As in a function and converted it into a Dataset using the datasets library provided by Hugging Face. Here is the list:texts = [    &quot;Q: How do transformers work?\nA: Transformers process sequences using self-attention.&quot;,    &quot;Q: What does physics explain?\nA: Physics explains natural phenomena using mathematical models.&quot;,    &quot;Q: What do machine learning models do?\nA: Machine learning models learn patterns from data.&quot;,    &quot;Q: How do transformers work?\nA: Transformers process sequences using self-attention mechanisms.&quot;,    &quot;Q: What is self-attention?\nA: Self-attention allows tokens in a sequence to attend to each other.&quot;,]Notice the format of the data. I purposely wrote Q to label the question, included a line break \n and an A to label the answer. The reason for this is so that the model can know what is meant as a question and what is the answer. While this may not be necessary for more recent models, since I am using GPT-2 I wanted to be sure that the data was properly labeled before passing it into the model. With the data ready, let’s move to creating the LoRA model.For this task we will use the PEFT library from the Hugging Face ecosystem. While we will be focusing exclusively on LoRA, this library contains many different methods for adapting models. The function we will use is:def create_lora_model(model):    config = LoraConfig(        r=8,        lora_alpha=16,        target_modules=[&quot;c_attn&quot;],        lora_dropout=0.1,        bias=&quot;none&quot;,        task_type=&quot;CAUSAL_LM&quot;,        fan_in_fan_out=True,    )    return get_peft_model(model, config)This function takes a model and applies a LoRA configuration. Let’s look at the parameters:  r          The LoRA rank. A higher rank means more parameters to train, while a lower rank means less parameters.        lora_alpha          The scaling factor. This parameter controls how much influence the LoRA adapter contributes relative to the original (frozen) weights.        target_modules          Designate which modules with get augmented by the LoRA adapter. In this case, c_attn refers to the attention projection modules in GPT-2, whose job is to map the hidden states to vectors used for self-attention and vice versa.        lora_dropout          Standard dropout used in machine learning.        bias          Standard bias used in machine learning.        task_type          Tells PEFT what kind of model you are passing in.        fan_in_fan_out          Dictates how the model weights are stored. For GPT-2, this should be set to True.      From here, the LoRA model setup is complete. The class that contains all the GPT-2 functionality was covered in great detail in this post. While I’ve made some small modifications since then, I will only show where I create the LoRA model (see the file model_local.py for more information). The LoRA model is built in the class constructor and looks like the following:train_model = AutoModelForCausalLM.from_pretrained(model_name)self.lora_model = create_lora_model(train_model)That’s all that’s needed for setting up a LoRA model. Now, all we have to do is evaluate the model, which is done in the Jupyter Notebook (and in this previous post). Let’s look at the parameters of the base and LoRA model. The base model:model = LocalLM(cfg.model_name)total_params = sum(p.numel() for p in model.model.parameters())trainable_params = sum(p.numel() for p in model.model.parameters() if p.requires_grad)print(f&quot;Total parameters: {total_params:,}&quot;)print(f&quot;Trainable parameters: {trainable_params:,}&quot;)The output is:Total parameters: 124,439,808Trainable parameters: 124,439,808So the base model has over one hundred million parameters and they are all trainable. The LoRA model:model.lora_model.print_trainable_parameters()The output is:trainable params: 294,912 || all params: 124,734,720 || trainable%: 0.2364Now, the total trainable parameters in the LoRA model are $0.24\%$ of the total trainable parameters in the base model. This is a huge difference computationally and much more lightweight overall.The evaluation set that we will use to evaluate the model is the following:eval_prompts = [    &quot;Q: How do transformers work?\nA:&quot;,    &quot;Q: What does physics explain?\nA:&quot;,    &quot;Q: What do machine learning models do?\nA:&quot;,    &quot;Q: What is a language model?\nA:&quot;,    &quot;Q: What is overfitting?\nA:&quot;,    &quot;Q: What is a LoRA adapter?\nA:&quot;,]As you may note, some of these questions are exactly the same questions as in the training set. The purpose is to make sure that the LoRA model is learning correctly, since we expect the model to output the same answer we trained it with. We also include some questions that are not in the dataset so we can see how well the model adapts to information it was not directly trained on. We evaluate these questions with the base model and with the LoRA model to see the difference in output:Base model output:Q: How do transformers work?A: An inverted S is a function which takes three parameters, and multiplies it with the corresponding magnitude.LoRA model output:Q: How do transformers work?A: Transformers process sequences using self-attention mechanisms. Transformers allow tokens in a sequence to attend each otherBase model output:Q: What does physics explain?A: It doesn&#39;t necessarily have to be physical. You could say the same thing about quantum mechanics, andLoRA model output:Q: What does physics explain?A: Physics explains natural phenomena using mathematical models. Model results show that objects in a sequence do not exist,Base model output:Q: What do machine learning models do?A: In the past, I&#39;ve discussed what we&#39;re talking about here. We can model a whole rangeLoRA model output:Q: What do machine learning models do?A: Machine-learning model predictions learn patterns from data. Model results can be self-attributing orBase model output:Q: What is a language model?A: Language models are the basic tools that allow you to create systems, algorithms, and procedures for using informationLoRA model output:Q: What is a language model?A: Machine learning models learn patterns from data. Model results are self-attentionable.RationalBase model output:Q: What is overfitting?A: It&#39;s not a new problem. But if the players don&#39;t understand how to use it, thenLoRA model output:Q: What is overfitting?A: Over fitting allows an object to fit together in a fashion. Objects can be fitted without self-attBase model output:Q: What is a LoRA adapter?A: It&#39;s basically the same as an XC line. The difference being that there are two different interfacesLoRA model output:Q: What is a LoRA adapter?A: A self-attention mechanism allows tokens in an array to attend to each other. Tokens can beWe see that the LoRA model outputs the answers expected for the questions we trained it on, but the output for the questions we did not include in the training dataset are not adequately answered. While this may be worrisome, it is not surprising. GPT-2’s base capabilities are not as good as recent models. Since the base model for the LoRA adapter was GPT-2, it will most likely only outperform GPT-2 with data it is directly trained on. With a more advanced model, there are much better chances of successful extrapolation to information the LoRA adapter was not directly trained on. Either way, the LoRA model was successfully trained since it could reproduce the answers contained in the training dataset.We have now learned how LLMs can be adapted in practice using parameter-efficient fine-tuning. We took an existing model and wrapped it with a LoRA adapter. Using this model, we fine-tuned on a small dataset over $500$ epochs and tested the outputs using an evaluation dataset. From the results, we see that the LoRA model out-performed the base model on the data that it was trained on, but did not effectively extrapolate to other information. This was expected behavior since we used GPT-2 as the base model. A non-exhausted list of failure nodes are: training for a small number of epochs, not including enough weights in the LoRA adapter, not having a properly constructed dataset, and cross-contamination between the base and LoRA models (for testing outputs). Overall, we gained hands-on experience with a fine-tuning strategy widely used in the LLM work.Some extensions involve using a larger base model that is trained on millions of domain-specific examples. With enough resources, one could set up a training scheme that involves hyperparameter tuning to ensure the best adapter is chosen. Additionally, multiple adapters can be trained for various tasks and used in conjunction. This enables flexibility and customization on the outputs without retraining the base model or having one large LoRA model.The code presented in this post can be found on my Github under the lora-fine-tune repo [2]. Feel free to reach out if you have any questions about what we covered this week. Next time we will combine RAG with a LoRA-adapter model into one framework. Stay tuned![1] Edward J. Hu, Yelong Shen, Phillip Wallis, et al., LoRA: Low-Rank Adaptation of Large Language Models, arXiv preprint arXiv:2106.09685, 2021. [2] Alberto J. Garcia, Parameter-Efficient Fine-Tuning with LoRA, 2026. Available at: https://github.com/AJG91/lora-fine-tune.⬅ Back to Home">
+    <meta itemprop="datePublished" content="2026-04-19T00:00:00-07:00">
+    
+
+    <div class="page__inner-wrap">
+      
+        <header>
+          <h1 id="page-title" class="page__title" itemprop="headline">
+            <a href="https://ajg91.github.io//posts/large-language-models/lora-adapter/" itemprop="url">LoRA model: Adapting GPT-2
+</a>
+          </h1>
+          
+
+
+        </header>
+      
+
+      <section class="page__content" itemprop="text">
+        
+        <p class="post-date">April 19, 2026</p>
+
+<p>This week I will walk through the process of training a model using a low-rank adaptation (LoRA). For this, we will be using the GPT-2 model we’ve aleady used in previous posts. We cannot use the GPT-4.1 nano model since it does not come with adjustable weights.</p>
+
+<p>LoRA is a parameter-efficient fine-tuning (PEFT) technique that introduces small trainable low-rank matrices into layers of a pretrained model while keeping the original model weights frozen (retains pre-trained knowledge) <a class="citation" href="#hu2021lora">[1]</a>. The purpose is to change the model behavior without retraining all the model parameters. It works by training the LoRA adapter (a.k.a. weights) on the information we want to include in the base model and then merging it into the model before inference. Essentially, we inject information into large language models (LLMs) by inserting neural layers between the transformer layers and modify the weights using LoRA, which are a very small fraction compared to the model weights. This is ideal when you want to take a model and make it domain specific instead of expending resources in retraining and adjusting the billions of parameters found in current models.</p>
+
+<p>As always, the first step is to define our parameters in a <code class="language-plaintext highlighter-rouge">.yaml</code> file and use SimpleNamespace to store them. In this case, the parameters are the following:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span>
+  <span class="sh">"</span><span class="s">model_name</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">gpt2</span><span class="sh">"</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">seed</span><span class="sh">"</span><span class="p">:</span> <span class="mi">42</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">max_token_length</span><span class="sh">"</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">lr</span><span class="sh">"</span><span class="p">:</span> <span class="mf">0.0001</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">warmup_ratio</span><span class="sh">"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">epochs</span><span class="sh">"</span><span class="p">:</span> <span class="mi">500</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">train_batch_size</span><span class="sh">"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">strategy</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">steps</span><span class="sh">"</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">logging_steps</span><span class="sh">"</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">res_path</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">../results/</span><span class="sh">"</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Most of these parameters should be familiar from previous posts so I will not go over them. Note that I am logging the training loss every $5$ steps.</p>
+
+<p>Let’s first look as to how we are building the dataset that will be used to train the LoRA adapter. There are many different ways that a dataset can be built. In this case, I just wrapped a list of Q&amp;As in a function and converted it into a <code class="language-plaintext highlighter-rouge">Dataset</code> using the <code class="language-plaintext highlighter-rouge">datasets</code> <a href="https://huggingface.co/docs/datasets/index" title="hf-datasets">library</a> provided by Hugging Face. Here is the list:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">texts</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="sh">"</span><span class="s">Q: How do transformers work?</span><span class="se">\n</span><span class="s">A: Transformers process sequences using self-attention.</span><span class="sh">"</span><span class="p">,</span>
+    <span class="sh">"</span><span class="s">Q: What does physics explain?</span><span class="se">\n</span><span class="s">A: Physics explains natural phenomena using mathematical models.</span><span class="sh">"</span><span class="p">,</span>
+    <span class="sh">"</span><span class="s">Q: What do machine learning models do?</span><span class="se">\n</span><span class="s">A: Machine learning models learn patterns from data.</span><span class="sh">"</span><span class="p">,</span>
+    <span class="sh">"</span><span class="s">Q: How do transformers work?</span><span class="se">\n</span><span class="s">A: Transformers process sequences using self-attention mechanisms.</span><span class="sh">"</span><span class="p">,</span>
+    <span class="sh">"</span><span class="s">Q: What is self-attention?</span><span class="se">\n</span><span class="s">A: Self-attention allows tokens in a sequence to attend to each other.</span><span class="sh">"</span><span class="p">,</span>
+<span class="p">]</span>
+</code></pre></div></div>
+
+<p>Notice the format of the data. I purposely wrote Q to label the question, included a line break <code class="language-plaintext highlighter-rouge">\n</code> and an A to label the answer. The reason for this is so that the model can know what is meant as a question and what is the answer. While this may not be necessary for more recent models, since I am using GPT-2 I wanted to be sure that the data was properly labeled before passing it into the model. With the data ready, let’s move to creating the LoRA model.</p>
+
+<p>For this task we will use the <a href="https://huggingface.co/PEFT" title="hf-peft">PEFT</a> library from the Hugging Face ecosystem. While we will be focusing exclusively on LoRA, this library contains many different methods for adapting models. The function we will use is:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">create_lora_model</span><span class="p">(</span><span class="n">model</span><span class="p">):</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="nc">LoraConfig</span><span class="p">(</span>
+        <span class="n">r</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+        <span class="n">lora_alpha</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span>
+        <span class="n">target_modules</span><span class="o">=</span><span class="p">[</span><span class="sh">"</span><span class="s">c_attn</span><span class="sh">"</span><span class="p">],</span>
+        <span class="n">lora_dropout</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+        <span class="n">bias</span><span class="o">=</span><span class="sh">"</span><span class="s">none</span><span class="sh">"</span><span class="p">,</span>
+        <span class="n">task_type</span><span class="o">=</span><span class="sh">"</span><span class="s">CAUSAL_LM</span><span class="sh">"</span><span class="p">,</span>
+        <span class="n">fan_in_fan_out</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="nf">get_peft_model</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>This function takes a model and applies a LoRA configuration. Let’s look at the parameters:</p>
+
+<ol>
+  <li><em>r</em>
+    <ul>
+      <li>The LoRA rank. A higher rank means more parameters to train, while a lower rank means less parameters.</li>
+    </ul>
+  </li>
+  <li><em>lora_alpha</em>
+    <ul>
+      <li>The scaling factor. This parameter controls how much influence the LoRA adapter contributes relative to the original (frozen) weights.</li>
+    </ul>
+  </li>
+  <li><em>target_modules</em>
+    <ul>
+      <li>Designate which modules with get augmented by the LoRA adapter. In this case, <code class="language-plaintext highlighter-rouge">c_attn</code> refers to the attention projection modules in GPT-2, whose job is to map the hidden states to vectors used for self-attention and vice versa.</li>
+    </ul>
+  </li>
+  <li><em>lora_dropout</em>
+    <ul>
+      <li>Standard dropout used in machine learning.</li>
+    </ul>
+  </li>
+  <li><em>bias</em>
+    <ul>
+      <li>Standard bias used in machine learning.</li>
+    </ul>
+  </li>
+  <li><em>task_type</em>
+    <ul>
+      <li>Tells PEFT what kind of model you are passing in.</li>
+    </ul>
+  </li>
+  <li><em>fan_in_fan_out</em>
+    <ul>
+      <li>Dictates how the model weights are stored. For GPT-2, this should be set to True.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>From here, the LoRA model setup is complete. The class that contains all the GPT-2 functionality was covered in great detail in this <a href="https://ajg91.github.io/posts/large-language-models/decoder-gpt-2-example/" title="decoder-blog-post">post</a>. While I’ve made some small modifications since then, I will only show where I create the LoRA model (see the file <code class="language-plaintext highlighter-rouge">model_local.py</code> for more information). The LoRA model is built in the class constructor and looks like the following:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">train_model</span> <span class="o">=</span> <span class="n">AutoModelForCausalLM</span><span class="p">.</span><span class="nf">from_pretrained</span><span class="p">(</span><span class="n">model_name</span><span class="p">)</span>
+<span class="n">self</span><span class="p">.</span><span class="n">lora_model</span> <span class="o">=</span> <span class="nf">create_lora_model</span><span class="p">(</span><span class="n">train_model</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>That’s all that’s needed for setting up a LoRA model. Now, all we have to do is evaluate the model, which is done in the Jupyter Notebook (and in this previous <a href="https://ajg91.github.io/posts/large-language-models/decoder-gpt-2-example/" title="decoder-blog-post">post</a>). Let’s look at the parameters of the base and LoRA model. The base model:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">model</span> <span class="o">=</span> <span class="nc">LocalLM</span><span class="p">(</span><span class="n">cfg</span><span class="p">.</span><span class="n">model_name</span><span class="p">)</span>
+
+<span class="n">total_params</span> <span class="o">=</span> <span class="nf">sum</span><span class="p">(</span><span class="n">p</span><span class="p">.</span><span class="nf">numel</span><span class="p">()</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">model</span><span class="p">.</span><span class="n">model</span><span class="p">.</span><span class="nf">parameters</span><span class="p">())</span>
+<span class="n">trainable_params</span> <span class="o">=</span> <span class="nf">sum</span><span class="p">(</span><span class="n">p</span><span class="p">.</span><span class="nf">numel</span><span class="p">()</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">model</span><span class="p">.</span><span class="n">model</span><span class="p">.</span><span class="nf">parameters</span><span class="p">()</span> <span class="k">if</span> <span class="n">p</span><span class="p">.</span><span class="n">requires_grad</span><span class="p">)</span>
+
+<span class="nf">print</span><span class="p">(</span><span class="sa">f</span><span class="sh">"</span><span class="s">Total parameters: </span><span class="si">{</span><span class="n">total_params</span><span class="si">:</span><span class="p">,</span><span class="si">}</span><span class="sh">"</span><span class="p">)</span>
+<span class="nf">print</span><span class="p">(</span><span class="sa">f</span><span class="sh">"</span><span class="s">Trainable parameters: </span><span class="si">{</span><span class="n">trainable_params</span><span class="si">:</span><span class="p">,</span><span class="si">}</span><span class="sh">"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>The output is:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Total</span> <span class="n">parameters</span><span class="p">:</span> <span class="mi">124</span><span class="p">,</span><span class="mi">439</span><span class="p">,</span><span class="mi">808</span>
+<span class="n">Trainable</span> <span class="n">parameters</span><span class="p">:</span> <span class="mi">124</span><span class="p">,</span><span class="mi">439</span><span class="p">,</span><span class="mi">808</span>
+</code></pre></div></div>
+
+<p>So the base model has over one hundred million parameters and they are all trainable. The LoRA model:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">model</span><span class="p">.</span><span class="n">lora_model</span><span class="p">.</span><span class="nf">print_trainable_parameters</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>The output is:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">trainable</span> <span class="n">params</span><span class="p">:</span> <span class="mi">294</span><span class="p">,</span><span class="mi">912</span> <span class="o">||</span> <span class="nb">all</span> <span class="n">params</span><span class="p">:</span> <span class="mi">124</span><span class="p">,</span><span class="mi">734</span><span class="p">,</span><span class="mi">720</span> <span class="o">||</span> <span class="n">trainable</span><span class="o">%</span><span class="p">:</span> <span class="mf">0.2364</span>
+</code></pre></div></div>
+
+<p>Now, the total trainable parameters in the LoRA model are $0.24\%$ of the total trainable parameters in the base model. This is a huge difference computationally and much more lightweight overall.</p>
+
+<p>The evaluation set that we will use to evaluate the model is the following:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>eval_prompts = [
+    "Q: How do transformers work?\nA:",
+    "Q: What does physics explain?\nA:",
+    "Q: What do machine learning models do?\nA:",
+    "Q: What is a language model?\nA:",
+    "Q: What is overfitting?\nA:",
+    "Q: What is a LoRA adapter?\nA:",
+]
+</code></pre></div></div>
+
+<p>As you may note, some of these questions are exactly the same questions as in the training set. The purpose is to make sure that the LoRA model is learning correctly, since we expect the model to output the same answer we trained it with. We also include some questions that are not in the dataset so we can see how well the model adapts to information it was not directly trained on. We evaluate these questions with the base model and with the LoRA model to see the difference in output:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Base model output:
+Q: How do transformers work?
+A: An inverted S is a function which takes three parameters, and multiplies it with the corresponding magnitude.
+
+LoRA model output:
+Q: How do transformers work?
+A: Transformers process sequences using self-attention mechanisms. Transformers allow tokens in a sequence to attend each other
+
+
+Base model output:
+Q: What does physics explain?
+A: It doesn't necessarily have to be physical. You could say the same thing about quantum mechanics, and
+
+LoRA model output:
+Q: What does physics explain?
+A: Physics explains natural phenomena using mathematical models. Model results show that objects in a sequence do not exist,
+
+
+Base model output:
+Q: What do machine learning models do?
+A: In the past, I've discussed what we're talking about here. We can model a whole range
+
+LoRA model output:
+Q: What do machine learning models do?
+A: Machine-learning model predictions learn patterns from data. Model results can be self-attributing or
+
+
+Base model output:
+Q: What is a language model?
+A: Language models are the basic tools that allow you to create systems, algorithms, and procedures for using information
+
+LoRA model output:
+Q: What is a language model?
+A: Machine learning models learn patterns from data. Model results are self-attentionable.
+Rational
+
+
+Base model output:
+Q: What is overfitting?
+A: It's not a new problem. But if the players don't understand how to use it, then
+
+LoRA model output:
+Q: What is overfitting?
+A: Over fitting allows an object to fit together in a fashion. Objects can be fitted without self-att
+
+
+Base model output:
+Q: What is a LoRA adapter?
+A: It's basically the same as an XC line. The difference being that there are two different interfaces
+
+LoRA model output:
+Q: What is a LoRA adapter?
+A: A self-attention mechanism allows tokens in an array to attend to each other. Tokens can be
+</code></pre></div></div>
+
+<p>We see that the LoRA model outputs the answers expected for the questions we trained it on, but the output for the questions we did not include in the training dataset are not adequately answered. While this may be worrisome, it is not surprising. GPT-2’s base capabilities are not as good as recent models. Since the base model for the LoRA adapter was GPT-2, it will most likely only outperform GPT-2 with data it is directly trained on. With a more advanced model, there are much better chances of successful extrapolation to information the LoRA adapter was not directly trained on. Either way, the LoRA model was successfully trained since it could reproduce the answers contained in the training dataset.</p>
+
+<p>We have now learned how LLMs can be adapted in practice using parameter-efficient fine-tuning. We took an existing model and wrapped it with a LoRA adapter. Using this model, we fine-tuned on a small dataset over $500$ epochs and tested the outputs using an evaluation dataset. From the results, we see that the LoRA model out-performed the base model on the data that it was trained on, but did not effectively extrapolate to other information. This was expected behavior since we used GPT-2 as the base model. A non-exhausted list of failure nodes are: training for a small number of epochs, not including enough weights in the LoRA adapter, not having a properly constructed dataset, and cross-contamination between the base and LoRA models (for testing outputs). Overall, we gained hands-on experience with a fine-tuning strategy widely used in the LLM work.</p>
+
+<p>Some extensions involve using a larger base model that is trained on millions of domain-specific examples. With enough resources, one could set up a training scheme that involves hyperparameter tuning to ensure the best adapter is chosen. Additionally, multiple adapters can be trained for various tasks and used in conjunction. This enables flexibility and customization on the outputs without retraining the base model or having one large LoRA model.</p>
+
+<p>The code presented in this post can be found on my Github under the <a href="https://github.com/AJG91/lora-fine-tune" title="lora-repo">lora-fine-tune</a> repo <a class="citation" href="#Garcia2026LoRAFineTune">[2]</a>. Feel free to reach out if you have any questions about what we covered this week. Next time we will combine RAG with a LoRA-adapter model into one framework. Stay tuned!</p>
+
+<ol class="bibliography"><li><span id="hu2021lora">[1] Edward J. Hu, Yelong Shen, Phillip Wallis, et al., <i>LoRA: Low-Rank Adaptation of Large Language Models</i>, arXiv preprint arXiv:2106.09685, 2021. </span></li>
+<li><span id="Garcia2026LoRAFineTune">[2] Alberto J. Garcia, <i>Parameter-Efficient Fine-Tuning with LoRA</i>, 2026. Available at: https://github.com/AJG91/lora-fine-tune.</span></li></ol>
+<p><a href="/" class="btn">⬅ Back to Home</a></p>
+
+        
+      </section>
+
+      <footer class="page__meta">
+        
+        
+
+
+        
+
+  <p class="page__date"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Updated:</strong> <time class="dt-published" datetime="2026-04-19T00:00:00-07:00">April 19, 2026</time></p>
+
+      </footer>
+
+      
+
+      
+  <nav class="pagination">
+    
+      <a href="/posts/large-language-models/rag-chatbot/" class="pagination--pager" title="RAG chatbot: Querying documents effectively">Previous</a>
+    
+    
+      <a href="#" class="pagination--pager disabled">Next</a>
+    
+  </nav>
+
+
+    </div>
+
+    
+  </article>
+
+  
+  
+</div>
+
+      
+    </div>
+
+    
+
+    <div id="footer" class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        
+
+<div class="page__footer-follow">
+  <ul class="social-icons">
+    
+
+    
+
+    
+      <li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+    
+  </ul>
+</div>
+
+
+<div class="page__footer-copyright">&copy; 2026 <a href="https://ajg91.github.io/">AJG&#39;s Homepage</a>. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/jekyll-themes/minimal-mistakes/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+
+  </body>
+</html>

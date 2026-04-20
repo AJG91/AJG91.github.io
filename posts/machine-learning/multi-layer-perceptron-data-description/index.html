@@ -1,0 +1,451 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.27.3 by Michael Rose
+  Copyright 2013-2025 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE
+-->
+
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin _includes/seo.html --><title>Multi-layer perceptron: California housing dataset - AJG’s Homepage</title>
+<meta name="description" content="October 05, 2025  In these next posts we will learn a little bit about hyperparameter tuning and debugging. This week I will discuss the data set we will be using and next week we will start training the model.  When deciding on what model and dataset to use, I realized that I previously jumped straight into convolutional neural networks without first explaining the multi-layer perceptron (MLP). Although it got some coverage in my post on convolutional neural networks, I figured it would be a good idea to go back and touch on it again. I will not be extremely verbose about it since the focus of these posts is on hyperparameter tuning and debugging.  We will be using is the California housing dataset to train and evaluate our model. This dataset contains aggregated data regarding each district in California such as median income, population, and location (Latitude and longitude). Here is a snippet of what the data looks like:                 MedInc       HouseAge       AveRooms       AveBedrms       Population       AveOccup       Latitude       Longitude       MedHouseVal                       8.3252       41       6.98413       1.02381       322       2.55556       37.88       -122.23       4.526                 8.3014       21       6.23814       0.97188       2401       2.10984       37.86       -122.22       3.585                 7.2574       52       8.28814       1.07345       496       2.80226       37.85       -122.24       3.521                 5.6431       52       5.81735       1.07306       558       2.54795       37.85       -122.25       3.413                 3.8462       52       6.28185       1.08108       565       2.18147       37.85       -122.25       3.422           Let’s look at some statistics. As a note, the incomes displayed are all in tens of thousands of dollars (i.e. 1.23 = $12,300).               MedInc     AveBedrms      AveOccup count  20640.000000  20640.000000  20640.000000 mean       3.870671      1.096675      3.070655 std        1.899822      0.473911     10.386050 min        0.499900      0.333333      0.692308 25%        2.563400      1.006079      2.429741 50%        3.534800      1.048780      2.818116 75%        4.743250      1.099526      3.282261 max       15.000100     34.066667   1243.333333   From the table above, we see that the average income is $38,700. Additionally, the average number of bedrooms per household is 1 with an average number of occupants being 3. While some values seem reasonable, others don’t make sense. For example, the max of average number of occupants 1243. This seems unlikely and is probably caused by how the consensus data was recorded. For example, we don’t knw how college dorms, apartment complexes, and prisons were accounted for. We can remove these outliers from the dataset so that we can have a better understanding of the average household by using the interquartile range and only keeping the middle 50% of the dataset:  Q1 = df_housing.quantile(0.25) Q3 = df_housing.quantile(0.75) IQR = Q3 - Q1  df_housing = df_housing[~((df_housing &lt; (Q1 - 1.5 * IQR)) | (df_housing &gt; (Q3 + 1.5 * IQR))).any(axis=1)]   Taking a look at the statistics again gives:               MedInc     AveBedrms      AveOccup count  16312.000000  16312.000000  16312.000000 mean       3.657930      1.047226      2.865163 std        1.444641      0.066569      0.624931 min        0.536000      0.866013      1.161290 25%        2.561150      1.002732      2.437060 50%        3.494650      1.043733      2.814886 75%        4.583300      1.088686      3.245208 max        8.011300      1.239521      4.560748   This is much more reasonable. Now, the median income is $36,579. Additionally, the average number of occupants is now ~4.5 per household and average number of bedrooms is 1. While this may seem strange, this data most likely considers spaces like studios and small units, which is probably the standard in expensive and overpopulated places like Los Angeles and San Fransciso.  We can plot the feature distributions to get a better idea of the underlying statistics:    From the plot, we see different details regarding the features. One such detail is that the median income is mostly a normal distribution, but it is slightly skewed and has a heavy tail towards the higher incomes. This means that there are people with a high salary, although not many. Looking at the latitude and longitude plots, we can discern that there are two places in California where the housing prices are towards the higher end. The median house value data is also slightly skewed and has a heavy tail towards the higher values.    This next plot displays the price by location, with green being the most expensive. It’s interesting to note that the points show a graphical representation of the state of California. We also see that our conclusion about the expensive houses being in two locates was indeed correct. The most expensive houses are located on the coast of Southern California (i.e. San Diego, Los Angeles) and Northern California (i.e. San Fransciso).    This next plot displaces price by location, but also accounts for the population size by plotting circles where the radius is determined by the total population in that region. For example, the biggest circles are located on the coast of California. This makes sense since we know that the places with the highest population sizes are San Diego, Los Angeles, and the bay area to name a few. On the other hand, as you go further inland you find that on average the population decreases.    Next, we have a correlation map which tells us how each feature correlations to each other. For example, house age has no correlation to the median income, but median income has a positive correlation to average rooms and median house values. Latitude and longitude also have a high positive correlation with each other. This most likely relates to the two spikes we see in the histogram for these features. Overall, it seems that only a small subset of features actually correlation with each other.  We have now gone over the data that we will be using to train our MLP. Overall, this is a standard dataset used in introduction to machine learning courses. While it is considered simple and easy to use, it is great for early demonstrations of model building and hyperparameter tuning.  Feel free to reach out if you have any questions about what we covered this week. Next time we will train the model, tune hyperparameters, and learn ways to debug if issues arise. Stay tuned!  ⬅ Back to Home">
+
+
+
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="AJG&#39;s Homepage">
+<meta property="og:title" content="Multi-layer perceptron: California housing dataset">
+<meta property="og:url" content="https://ajg91.github.io//posts/machine-learning/multi-layer-perceptron-data-description/">
+
+
+  <meta property="og:description" content="October 05, 2025  In these next posts we will learn a little bit about hyperparameter tuning and debugging. This week I will discuss the data set we will be using and next week we will start training the model.  When deciding on what model and dataset to use, I realized that I previously jumped straight into convolutional neural networks without first explaining the multi-layer perceptron (MLP). Although it got some coverage in my post on convolutional neural networks, I figured it would be a good idea to go back and touch on it again. I will not be extremely verbose about it since the focus of these posts is on hyperparameter tuning and debugging.  We will be using is the California housing dataset to train and evaluate our model. This dataset contains aggregated data regarding each district in California such as median income, population, and location (Latitude and longitude). Here is a snippet of what the data looks like:                 MedInc       HouseAge       AveRooms       AveBedrms       Population       AveOccup       Latitude       Longitude       MedHouseVal                       8.3252       41       6.98413       1.02381       322       2.55556       37.88       -122.23       4.526                 8.3014       21       6.23814       0.97188       2401       2.10984       37.86       -122.22       3.585                 7.2574       52       8.28814       1.07345       496       2.80226       37.85       -122.24       3.521                 5.6431       52       5.81735       1.07306       558       2.54795       37.85       -122.25       3.413                 3.8462       52       6.28185       1.08108       565       2.18147       37.85       -122.25       3.422           Let’s look at some statistics. As a note, the incomes displayed are all in tens of thousands of dollars (i.e. 1.23 = $12,300).               MedInc     AveBedrms      AveOccup count  20640.000000  20640.000000  20640.000000 mean       3.870671      1.096675      3.070655 std        1.899822      0.473911     10.386050 min        0.499900      0.333333      0.692308 25%        2.563400      1.006079      2.429741 50%        3.534800      1.048780      2.818116 75%        4.743250      1.099526      3.282261 max       15.000100     34.066667   1243.333333   From the table above, we see that the average income is $38,700. Additionally, the average number of bedrooms per household is 1 with an average number of occupants being 3. While some values seem reasonable, others don’t make sense. For example, the max of average number of occupants 1243. This seems unlikely and is probably caused by how the consensus data was recorded. For example, we don’t knw how college dorms, apartment complexes, and prisons were accounted for. We can remove these outliers from the dataset so that we can have a better understanding of the average household by using the interquartile range and only keeping the middle 50% of the dataset:  Q1 = df_housing.quantile(0.25) Q3 = df_housing.quantile(0.75) IQR = Q3 - Q1  df_housing = df_housing[~((df_housing &lt; (Q1 - 1.5 * IQR)) | (df_housing &gt; (Q3 + 1.5 * IQR))).any(axis=1)]   Taking a look at the statistics again gives:               MedInc     AveBedrms      AveOccup count  16312.000000  16312.000000  16312.000000 mean       3.657930      1.047226      2.865163 std        1.444641      0.066569      0.624931 min        0.536000      0.866013      1.161290 25%        2.561150      1.002732      2.437060 50%        3.494650      1.043733      2.814886 75%        4.583300      1.088686      3.245208 max        8.011300      1.239521      4.560748   This is much more reasonable. Now, the median income is $36,579. Additionally, the average number of occupants is now ~4.5 per household and average number of bedrooms is 1. While this may seem strange, this data most likely considers spaces like studios and small units, which is probably the standard in expensive and overpopulated places like Los Angeles and San Fransciso.  We can plot the feature distributions to get a better idea of the underlying statistics:    From the plot, we see different details regarding the features. One such detail is that the median income is mostly a normal distribution, but it is slightly skewed and has a heavy tail towards the higher incomes. This means that there are people with a high salary, although not many. Looking at the latitude and longitude plots, we can discern that there are two places in California where the housing prices are towards the higher end. The median house value data is also slightly skewed and has a heavy tail towards the higher values.    This next plot displays the price by location, with green being the most expensive. It’s interesting to note that the points show a graphical representation of the state of California. We also see that our conclusion about the expensive houses being in two locates was indeed correct. The most expensive houses are located on the coast of Southern California (i.e. San Diego, Los Angeles) and Northern California (i.e. San Fransciso).    This next plot displaces price by location, but also accounts for the population size by plotting circles where the radius is determined by the total population in that region. For example, the biggest circles are located on the coast of California. This makes sense since we know that the places with the highest population sizes are San Diego, Los Angeles, and the bay area to name a few. On the other hand, as you go further inland you find that on average the population decreases.    Next, we have a correlation map which tells us how each feature correlations to each other. For example, house age has no correlation to the median income, but median income has a positive correlation to average rooms and median house values. Latitude and longitude also have a high positive correlation with each other. This most likely relates to the two spikes we see in the histogram for these features. Overall, it seems that only a small subset of features actually correlation with each other.  We have now gone over the data that we will be using to train our MLP. Overall, this is a standard dataset used in introduction to machine learning courses. While it is considered simple and easy to use, it is great for early demonstrations of model building and hyperparameter tuning.  Feel free to reach out if you have any questions about what we covered this week. Next time we will train the model, tune hyperparameters, and learn ways to debug if issues arise. Stay tuned!  ⬅ Back to Home">
+
+
+
+
+
+
+
+  <meta property="article:published_time" content="2025-10-05T00:00:00-07:00">
+
+
+
+
+
+
+<link rel="canonical" href="https://ajg91.github.io//posts/machine-learning/multi-layer-perceptron-data-description/">
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- end _includes/seo.html -->
+
+
+
+  <link href="/feed.xml" type="application/atom+xml" rel="alternate" title="AJG's Homepage Feed">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+  
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css"></noscript>
+
+
+
+    <script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$','$$'], ['\\[','\\]']]
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
+  </head>
+
+  <body class="layout--single" dir="ltr">
+    <nav class="skip-links">
+  <ul>
+    <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
+    <li><a href="#main" class="screen-reader-shortcut">Skip to content</a></li>
+    <li><a href="#footer" class="screen-reader-shortcut">Skip to footer</a></li>
+  </ul>
+</nav>
+
+    
+
+<div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        
+        <a class="site-title" href="/">
+          AJG&#39;s Homepage
+          
+        </a>
+        <ul class="visible-links"><li class="masthead__menu-item">
+              <a
+                href="/posts/"
+                
+                
+              >Posts</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/publications/"
+                
+                
+              >Publications</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/talks/"
+                
+                
+              >Talks</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/software/"
+                
+                
+              >Software</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/contact/"
+                
+                
+              >Contact Me</a>
+            </li></ul>
+        
+        <button class="greedy-nav__toggle hidden" type="button">
+          <span class="visually-hidden">Toggle menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+
+    <div class="initial-content">
+      
+
+
+
+
+  
+    
+
+
+
+<nav class="breadcrumbs">
+  <ol itemscope itemtype="https://schema.org/BreadcrumbList">
+    
+    
+    
+      
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/" itemprop="item"><span itemprop="name">Home</span></a>
+
+          <meta itemprop="position" content="1" />
+        </li>
+        <span class="sep">/</span>
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/posts" itemprop="item"><span itemprop="name">Posts</span></a>
+          <meta itemprop="position" content="2" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/machine-learning" itemprop="item"><span itemprop="name">Machine learning</span></a>
+          <meta itemprop="position" content="3" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        <li class="current">Multi-layer perceptron: California housing dataset</li>
+      
+    
+  </ol>
+</nav>
+
+  
+
+
+<div id="main" role="main">
+  
+
+
+  <article class="page" itemscope itemtype="https://schema.org/CreativeWork">
+    <meta itemprop="headline" content="Multi-layer perceptron: California housing dataset">
+    <meta itemprop="description" content="October 05, 2025In these next posts we will learn a little bit about hyperparameter tuning and debugging. This week I will discuss the data set we will be using and next week we will start training the model.When deciding on what model and dataset to use, I realized that I previously jumped straight into convolutional neural networks without first explaining the multi-layer perceptron (MLP). Although it got some coverage in my post on convolutional neural networks, I figured it would be a good idea to go back and touch on it again. I will not be extremely verbose about it since the focus of these posts is on hyperparameter tuning and debugging.We will be using is the California housing dataset to train and evaluate our model. This dataset contains aggregated data regarding each district in California such as median income, population, and location (Latitude and longitude). Here is a snippet of what the data looks like:            MedInc      HouseAge      AveRooms      AveBedrms      Population      AveOccup      Latitude      Longitude      MedHouseVal                  8.3252      41      6.98413      1.02381      322      2.55556      37.88      -122.23      4.526              8.3014      21      6.23814      0.97188      2401      2.10984      37.86      -122.22      3.585              7.2574      52      8.28814      1.07345      496      2.80226      37.85      -122.24      3.521              5.6431      52      5.81735      1.07306      558      2.54795      37.85      -122.25      3.413              3.8462      52      6.28185      1.08108      565      2.18147      37.85      -122.25      3.422      Let’s look at some statistics. As a note, the incomes displayed are all in tens of thousands of dollars (i.e. 1.23 = $12,300).             MedInc     AveBedrms      AveOccupcount  20640.000000  20640.000000  20640.000000mean       3.870671      1.096675      3.070655std        1.899822      0.473911     10.386050min        0.499900      0.333333      0.69230825%        2.563400      1.006079      2.42974150%        3.534800      1.048780      2.81811675%        4.743250      1.099526      3.282261max       15.000100     34.066667   1243.333333From the table above, we see that the average income is $38,700. Additionally, the average number of bedrooms per household is 1 with an average number of occupants being 3. While some values seem reasonable, others don’t make sense. For example, the max of average number of occupants 1243. This seems unlikely and is probably caused by how the consensus data was recorded. For example, we don’t knw how college dorms, apartment complexes, and prisons were accounted for. We can remove these outliers from the dataset so that we can have a better understanding of the average household by using the interquartile range and only keeping the middle 50% of the dataset:Q1 = df_housing.quantile(0.25)Q3 = df_housing.quantile(0.75)IQR = Q3 - Q1df_housing = df_housing[~((df_housing &lt; (Q1 - 1.5 * IQR)) | (df_housing &gt; (Q3 + 1.5 * IQR))).any(axis=1)]Taking a look at the statistics again gives:             MedInc     AveBedrms      AveOccupcount  16312.000000  16312.000000  16312.000000mean       3.657930      1.047226      2.865163std        1.444641      0.066569      0.624931min        0.536000      0.866013      1.16129025%        2.561150      1.002732      2.43706050%        3.494650      1.043733      2.81488675%        4.583300      1.088686      3.245208max        8.011300      1.239521      4.560748This is much more reasonable. Now, the median income is $36,579. Additionally, the average number of occupants is now ~4.5 per household and average number of bedrooms is 1. While this may seem strange, this data most likely considers spaces like studios and small units, which is probably the standard in expensive and overpopulated places like Los Angeles and San Fransciso.We can plot the feature distributions to get a better idea of the underlying statistics:From the plot, we see different details regarding the features. One such detail is that the median income is mostly a normal distribution, but it is slightly skewed and has a heavy tail towards the higher incomes. This means that there are people with a high salary, although not many. Looking at the latitude and longitude plots, we can discern that there are two places in California where the housing prices are towards the higher end. The median house value data is also slightly skewed and has a heavy tail towards the higher values.This next plot displays the price by location, with green being the most expensive. It’s interesting to note that the points show a graphical representation of the state of California. We also see that our conclusion about the expensive houses being in two locates was indeed correct. The most expensive houses are located on the coast of Southern California (i.e. San Diego, Los Angeles) and Northern California (i.e. San Fransciso).This next plot displaces price by location, but also accounts for the population size by plotting circles where the radius is determined by the total population in that region. For example, the biggest circles are located on the coast of California. This makes sense since we know that the places with the highest population sizes are San Diego, Los Angeles, and the bay area to name a few. On the other hand, as you go further inland you find that on average the population decreases.Next, we have a correlation map which tells us how each feature correlations to each other. For example, house age has no correlation to the median income, but median income has a positive correlation to average rooms and median house values. Latitude and longitude also have a high positive correlation with each other. This most likely relates to the two spikes we see in the histogram for these features. Overall, it seems that only a small subset of features actually correlation with each other.We have now gone over the data that we will be using to train our MLP. Overall, this is a standard dataset used in introduction to machine learning courses. While it is considered simple and easy to use, it is great for early demonstrations of model building and hyperparameter tuning.Feel free to reach out if you have any questions about what we covered this week. Next time we will train the model, tune hyperparameters, and learn ways to debug if issues arise. Stay tuned!⬅ Back to Home">
+    <meta itemprop="datePublished" content="2025-10-05T00:00:00-07:00">
+    
+
+    <div class="page__inner-wrap">
+      
+        <header>
+          <h1 id="page-title" class="page__title" itemprop="headline">
+            <a href="https://ajg91.github.io//posts/machine-learning/multi-layer-perceptron-data-description/" itemprop="url">Multi-layer perceptron: California housing dataset
+</a>
+          </h1>
+          
+
+
+        </header>
+      
+
+      <section class="page__content" itemprop="text">
+        
+        <p class="post-date">October 05, 2025</p>
+
+<p>In these next posts we will learn a little bit about hyperparameter tuning and debugging. This week I will discuss the data set we will be using and next week we will start training the model.</p>
+
+<p>When deciding on what model and dataset to use, I realized that I previously jumped straight into convolutional neural networks without first explaining the multi-layer perceptron (MLP). Although it got some coverage in my <a href="https://ajg91.github.io/posts/2025-09-07-convolutional-neural-network-with-mnist-dataset/" title="cnn-blog-post-#2">post</a> on convolutional neural networks, I figured it would be a good idea to go back and touch on it again. I will not be extremely verbose about it since the focus of these posts is on hyperparameter tuning and debugging.</p>
+
+<p>We will be using is the <a href="https://scikit-learn.org/stable/modules/generated/sklearn.datasets.fetch_california_housing.html" title="ca-housing-docs">California housing</a> dataset to train and evaluate our model. This dataset contains aggregated data regarding each district in California such as median income, population, and location (Latitude and longitude). Here is a snippet of what the data looks like:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: right">MedInc</th>
+      <th style="text-align: right">HouseAge</th>
+      <th style="text-align: right">AveRooms</th>
+      <th style="text-align: right">AveBedrms</th>
+      <th style="text-align: right">Population</th>
+      <th style="text-align: right">AveOccup</th>
+      <th style="text-align: right">Latitude</th>
+      <th style="text-align: right">Longitude</th>
+      <th style="text-align: right">MedHouseVal</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: right">8.3252</td>
+      <td style="text-align: right">41</td>
+      <td style="text-align: right">6.98413</td>
+      <td style="text-align: right">1.02381</td>
+      <td style="text-align: right">322</td>
+      <td style="text-align: right">2.55556</td>
+      <td style="text-align: right">37.88</td>
+      <td style="text-align: right">-122.23</td>
+      <td style="text-align: right">4.526</td>
+    </tr>
+    <tr>
+      <td style="text-align: right">8.3014</td>
+      <td style="text-align: right">21</td>
+      <td style="text-align: right">6.23814</td>
+      <td style="text-align: right">0.97188</td>
+      <td style="text-align: right">2401</td>
+      <td style="text-align: right">2.10984</td>
+      <td style="text-align: right">37.86</td>
+      <td style="text-align: right">-122.22</td>
+      <td style="text-align: right">3.585</td>
+    </tr>
+    <tr>
+      <td style="text-align: right">7.2574</td>
+      <td style="text-align: right">52</td>
+      <td style="text-align: right">8.28814</td>
+      <td style="text-align: right">1.07345</td>
+      <td style="text-align: right">496</td>
+      <td style="text-align: right">2.80226</td>
+      <td style="text-align: right">37.85</td>
+      <td style="text-align: right">-122.24</td>
+      <td style="text-align: right">3.521</td>
+    </tr>
+    <tr>
+      <td style="text-align: right">5.6431</td>
+      <td style="text-align: right">52</td>
+      <td style="text-align: right">5.81735</td>
+      <td style="text-align: right">1.07306</td>
+      <td style="text-align: right">558</td>
+      <td style="text-align: right">2.54795</td>
+      <td style="text-align: right">37.85</td>
+      <td style="text-align: right">-122.25</td>
+      <td style="text-align: right">3.413</td>
+    </tr>
+    <tr>
+      <td style="text-align: right">3.8462</td>
+      <td style="text-align: right">52</td>
+      <td style="text-align: right">6.28185</td>
+      <td style="text-align: right">1.08108</td>
+      <td style="text-align: right">565</td>
+      <td style="text-align: right">2.18147</td>
+      <td style="text-align: right">37.85</td>
+      <td style="text-align: right">-122.25</td>
+      <td style="text-align: right">3.422</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Let’s look at some statistics. As a note, the incomes displayed are all in tens of thousands of dollars (i.e. 1.23 = $12,300).</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code>             <span class="n">MedInc</span>     <span class="n">AveBedrms</span>      <span class="n">AveOccup</span>
+<span class="n">count</span>  <span class="mf">20640.000000</span>  <span class="mf">20640.000000</span>  <span class="mf">20640.000000</span>
+<span class="n">mean</span>       <span class="mf">3.870671</span>      <span class="mf">1.096675</span>      <span class="mf">3.070655</span>
+<span class="n">std</span>        <span class="mf">1.899822</span>      <span class="mf">0.473911</span>     <span class="mf">10.386050</span>
+<span class="nb">min</span>        <span class="mf">0.499900</span>      <span class="mf">0.333333</span>      <span class="mf">0.692308</span>
+<span class="mi">25</span><span class="o">%</span>        <span class="mf">2.563400</span>      <span class="mf">1.006079</span>      <span class="mf">2.429741</span>
+<span class="mi">50</span><span class="o">%</span>        <span class="mf">3.534800</span>      <span class="mf">1.048780</span>      <span class="mf">2.818116</span>
+<span class="mi">75</span><span class="o">%</span>        <span class="mf">4.743250</span>      <span class="mf">1.099526</span>      <span class="mf">3.282261</span>
+<span class="nb">max</span>       <span class="mf">15.000100</span>     <span class="mf">34.066667</span>   <span class="mf">1243.333333</span>
+</code></pre></div></div>
+
+<p>From the table above, we see that the average income is $38,700. Additionally, the average number of bedrooms per household is 1 with an average number of occupants being 3. While some values seem reasonable, others don’t make sense. For example, the max of average number of occupants 1243. This seems unlikely and is probably caused by how the consensus data was recorded. For example, we don’t knw how college dorms, apartment complexes, and prisons were accounted for. We can remove these outliers from the dataset so that we can have a better understanding of the average household by using the interquartile range and only keeping the middle 50% of the dataset:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Q1</span> <span class="o">=</span> <span class="n">df_housing</span><span class="p">.</span><span class="nf">quantile</span><span class="p">(</span><span class="mf">0.25</span><span class="p">)</span>
+<span class="n">Q3</span> <span class="o">=</span> <span class="n">df_housing</span><span class="p">.</span><span class="nf">quantile</span><span class="p">(</span><span class="mf">0.75</span><span class="p">)</span>
+<span class="n">IQR</span> <span class="o">=</span> <span class="n">Q3</span> <span class="o">-</span> <span class="n">Q1</span>
+
+<span class="n">df_housing</span> <span class="o">=</span> <span class="n">df_housing</span><span class="p">[</span><span class="o">~</span><span class="p">((</span><span class="n">df_housing</span> <span class="o">&lt;</span> <span class="p">(</span><span class="n">Q1</span> <span class="o">-</span> <span class="mf">1.5</span> <span class="o">*</span> <span class="n">IQR</span><span class="p">))</span> <span class="o">|</span> <span class="p">(</span><span class="n">df_housing</span> <span class="o">&gt;</span> <span class="p">(</span><span class="n">Q3</span> <span class="o">+</span> <span class="mf">1.5</span> <span class="o">*</span> <span class="n">IQR</span><span class="p">))).</span><span class="nf">any</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span>
+</code></pre></div></div>
+
+<p>Taking a look at the statistics again gives:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code>             <span class="n">MedInc</span>     <span class="n">AveBedrms</span>      <span class="n">AveOccup</span>
+<span class="n">count</span>  <span class="mf">16312.000000</span>  <span class="mf">16312.000000</span>  <span class="mf">16312.000000</span>
+<span class="n">mean</span>       <span class="mf">3.657930</span>      <span class="mf">1.047226</span>      <span class="mf">2.865163</span>
+<span class="n">std</span>        <span class="mf">1.444641</span>      <span class="mf">0.066569</span>      <span class="mf">0.624931</span>
+<span class="nb">min</span>        <span class="mf">0.536000</span>      <span class="mf">0.866013</span>      <span class="mf">1.161290</span>
+<span class="mi">25</span><span class="o">%</span>        <span class="mf">2.561150</span>      <span class="mf">1.002732</span>      <span class="mf">2.437060</span>
+<span class="mi">50</span><span class="o">%</span>        <span class="mf">3.494650</span>      <span class="mf">1.043733</span>      <span class="mf">2.814886</span>
+<span class="mi">75</span><span class="o">%</span>        <span class="mf">4.583300</span>      <span class="mf">1.088686</span>      <span class="mf">3.245208</span>
+<span class="nb">max</span>        <span class="mf">8.011300</span>      <span class="mf">1.239521</span>      <span class="mf">4.560748</span>
+</code></pre></div></div>
+
+<p>This is much more reasonable. Now, the median income is $36,579. Additionally, the average number of occupants is now ~4.5 per household and average number of bedrooms is 1. While this may seem strange, this data most likely considers spaces like studios and small units, which is probably the standard in expensive and overpopulated places like Los Angeles and San Fransciso.</p>
+
+<p>We can plot the feature distributions to get a better idea of the underlying statistics:</p>
+
+<p><img src="/assets/images/build_mlp/feature_distribution_housing.png" alt="feature_dist" /></p>
+
+<p>From the plot, we see different details regarding the features. One such detail is that the median income is mostly a normal distribution, but it is slightly skewed and has a heavy tail towards the higher incomes. This means that there are people with a high salary, although not many. Looking at the latitude and longitude plots, we can discern that there are two places in California where the housing prices are towards the higher end. The median house value data is also slightly skewed and has a heavy tail towards the higher values.</p>
+
+<p><img src="/assets/images/build_mlp/price_by_location_housing.png" alt="price_by_loc" /></p>
+
+<p>This next plot displays the price by location, with green being the most expensive. It’s interesting to note that the points show a graphical representation of the state of California. We also see that our conclusion about the expensive houses being in two locates was indeed correct. The most expensive houses are located on the coast of Southern California (i.e. San Diego, Los Angeles) and Northern California (i.e. San Fransciso).</p>
+
+<p><img src="/assets/images/build_mlp/price_and_population_housing.png" alt="price_and_pop" /></p>
+
+<p>This next plot displaces price by location, but also accounts for the population size by plotting circles where the radius is determined by the total population in that region. For example, the biggest circles are located on the coast of California. This makes sense since we know that the places with the highest population sizes are San Diego, Los Angeles, and the bay area to name a few. On the other hand, as you go further inland you find that on average the population decreases.</p>
+
+<p><img src="/assets/images/build_mlp/correlation_map_housing.png" alt="corr_map" /></p>
+
+<p>Next, we have a correlation map which tells us how each feature correlations to each other. For example, house age has no correlation to the median income, but median income has a positive correlation to average rooms and median house values. Latitude and longitude also have a high positive correlation with each other. This most likely relates to the two spikes we see in the histogram for these features. Overall, it seems that only a small subset of features actually correlation with each other.</p>
+
+<p>We have now gone over the data that we will be using to train our MLP. Overall, this is a standard dataset used in introduction to machine learning courses. While it is considered simple and easy to use, it is great for early demonstrations of model building and hyperparameter tuning.</p>
+
+<p>Feel free to reach out if you have any questions about what we covered this week. Next time we will train the model, tune hyperparameters, and learn ways to debug if issues arise. Stay tuned!</p>
+
+<p><a href="/" class="btn">⬅ Back to Home</a></p>
+
+        
+      </section>
+
+      <footer class="page__meta">
+        
+        
+
+
+        
+
+  <p class="page__date"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Updated:</strong> <time class="dt-published" datetime="2025-10-05T00:00:00-07:00">October 5, 2025</time></p>
+
+      </footer>
+
+      
+
+      
+  <nav class="pagination">
+    
+      <a href="/posts/machine-learning/convolutional-neural-network-with-mnist-pipeline/" class="pagination--pager" title="Convolutional neural networks: MNIST dataset with machine learning pipeline">Previous</a>
+    
+    
+      <a href="/posts/machine-learning/multi-layer-perceptron-hyperparameter-tuning/" class="pagination--pager" title="Multi-layer perceptron: Hyperparameter tuning">Next</a>
+    
+  </nav>
+
+
+    </div>
+
+    
+  </article>
+
+  
+  
+</div>
+
+      
+    </div>
+
+    
+
+    <div id="footer" class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        
+
+<div class="page__footer-follow">
+  <ul class="social-icons">
+    
+
+    
+
+    
+      <li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+    
+  </ul>
+</div>
+
+
+<div class="page__footer-copyright">&copy; 2026 <a href="https://ajg91.github.io/">AJG&#39;s Homepage</a>. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/jekyll-themes/minimal-mistakes/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+
+  </body>
+</html>

@@ -1,0 +1,469 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.27.3 by Michael Rose
+  Copyright 2013-2025 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE
+-->
+
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin _includes/seo.html --><title>RAG chatbot: Querying documents effectively - AJG’s Homepage</title>
+<meta name="description" content="March 08, 2026  This week I will demonstrate the basics of building a personal assistant with a focus on retrieval-augmented generation (RAG) to support long-term context without token limits. We will be using the chatbot we developed in the last post, as well as the GPT-2 and GPT-4.1 nano models.  Retrieval-augmented generation (RAG) is an architecture used for language models that combines retrieving information with text generation. As such, RAG is meant to influence the text generated from a languange model. Essentially, one creates a bank filled with information. The information relevant to the query initiated by the user is retrieved from the bank and is then used to create a context prompt. The prompt is passed into the text generating model with clear instructions to base the output on the retrieved information. This architecture allows for outputs grounded in previously obtained knowledge as opposed to relying on what the model learned during its training phase.  Langue models are not easy nor cheap to consistantly train as more information is obtained (see post). As such, they do not have access to recent data. When prompted, they can output outdated or even worse, completely wrong answers brought about by hallucinations. With RAG, you have a corpus of information you can periodically update and have the assistant chatbot retrieve the information to use as context for the text generation step without having to change the model’s weights. Additionally, RAG is a way for private companies to store information that is only meant to be accessible by employees. These internal documents can then be queried without including the information into the training set of a model. Overall, RAG provides a way to continuously update knowledge without having to retrain the model.  The first step is to define our parameters in a .yaml file and use SimpleNamespace to store them. In this case, the parameters are the following:  {   &quot;model_name&quot;: &quot;gpt2&quot;,   &quot;api_model_name&quot;: &quot;gpt-4.1-nano&quot;,    &quot;seed&quot;: 42,   &quot;n_turns&quot;: 6,    &quot;docs_dir&quot;: &quot;../data/raw/&quot;,   &quot;log_dir&quot;: &quot;../outputs/logs/&quot;,   &quot;state_dir&quot;: &quot;../outputs/state/&quot; }   The only new parameter compared to last post is docs_dir. As one would imagine, this is where the documents we will use for our RAG assistant are stored.  The chatbot code and Gradio wrapper are basically the same as the previous post. The only changes are two lines that I have now included in the class constructor:  DOCUMENTS = iter_jsonl_directory(docs_dir) self.retriever = DocsRetriever(DOCUMENTS)   The first line is used to grab all the .jsonl files in the directory (I’m only including one for proof-of-concept), pass the text through a processing step, append to a list, and output it. The second line initializes the documents retriever and prepares for query. Let’s dive deeper (docstrings are suppressed for brevity. See the file documents.py for more information):  def iter_jsonl_directory(directory: str) -&gt; list[str]:     directory = Path(directory)          all_text = []     for file_path in directory.glob(&quot;*.jsonl&quot;):         all_text.append(process_documents(file_path))          return [text for subtext in all_text for text in subtext]  def process_documents(path: str) -&gt; list[str]:     DOCUMENTS = []     for doc in iter_jsonl(path):         DOCUMENTS.extend(chunk_text(doc[&quot;text&quot;]))     return DOCUMENTS  def chunk_text(text: str, chunk_size: int = 80) -&gt; list[str]:     return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]   Since I’ve already described the primary purpose of the first function, let’s just into the next two functions, which is the processing step. For this example, the processing only entails breaking the text apart, known as chunking. For our purposes, we are breaking up the text at every $80$ characters.  What is the purpose of breaking the text up? Context windows have finite length. If you pass text longer than your context window, the text will get truncated. We want to avoid that since that would mean losing information crucial for the model output. Another issue could be giving too much context that the model ends up loosing the point of the query. You can image having a manager tasking you with priorities, but if he ends up dragging on for 30 minutes, it’ll be difficult to figure out exactly what he wants since you can become over-saturated with information. The same thing can happen with these models. To avoid any issues, we break the text up into managable pieces that we can insert into the context window.  When chunking the text, we also have to be conscious of what length to break the text up. I’ve already talked about what happens if the text is too long, but what if it’s not long enough? Going back to the manager example, if you manager gives you a one sentence priority list, this may not be a good thing because you may not have the context of the problem. Without context, you may solve the problem a way that is not valuable to the customer. The same thing occurs with these models. If your text is too short, the model will not have enough context to properly produce an output.  The next step is passing the text into the documents retriever. The code for this is (docstrings are suppressed for brevity. See the file retriever.py for more information):  class DocsRetriever:     def __init__(         self,          documents: list[str],          model: str = &quot;all-MiniLM-L6-v2&quot;     ):         self.documents = documents         self.model = SentenceTransformer(model)          embeddings = self.model.encode(documents, convert_to_numpy=True)         self.index = faiss.IndexFlatL2(embeddings.shape[1])         self.index.add(embeddings)      def retrieve(         self,          query: str,          k: int = 1     ) -&gt; list[str]:         query_emb = self.model.encode([query], convert_to_numpy=True)         _, idcs = self.index.search(query_emb, k)         return [self.documents[i] for i in idcs[0]]   This class is designed with the purpose of mapping text to vectors and to retrieve the documents that lie close to the query. In the constructor, we load a sentence-transformer model provided by Hugging Face called all-MiniLM-L6-v2. This model is nice to use because it’s embedding size is on the smaller end making it fast, but more complicated systems may need a bigger model. You can read more about it here. Now, we use this model calculate the embeddings, which is the portion that converts text to a dense vector, and returns them as a numpy array. Next, we create an index that we can use to organize the documents. For our example, we are using the FAISS (Facebook AI Similarity Search) library [3]. This library finds the nearest neighbors to a query vector efficiently. Since this is for proof-of-concept, we use a Euclidean distance, brute-force search. More efficient searches can be implemented, but IndexFlatL2 is enough for our example. More information can be found here. Finally, the embeddings are assigned an index.  When we go to retrieve, we pass in the query, created embeddings for the query using encode, and perform a search over all documents to find the one that lies closest to the query. As a note, we have set $k = 1$, which means that the search will return the highest matching document. Other options can be setting $k &gt; 1$ to return other documents that may also lie close, and using other algorithms to determine the best output. That is all it takes to retrieve documents for a query.  The last step is to inject the documents queried into the prompt. For this, we write functions that put together the prompt similar to the chatbot. The only difference is that now we purposely indicate to the model which information it should use to generate output text. I won’t copy over all the functions since they are mostly identical to what I showed in the previous post. I will only show the difference:  return (     f&quot;System prompt: {SYSTEM_PROMPT}\n\n&quot;     f&quot;Use ONLY the information below to answer.\n&quot;     f&quot;Context:\n{context}\n\n&quot;     f&quot;{history_text}\n&quot;     f&quot;User: {user_message}\n&quot;     f&quot;Assistant:&quot; )   We can see that when we inject the retrieved information into the prompt, we literally just add it into the prompt! We also specify to the model to answer the question using only the context obtained form the documents query. This step serves to constrain the text generation to only the context provided. Now, the model will know that it needs to use the specific information gathered from the documents to answer the user’s query. Note that we also keep the history (memory state) as before, since a second query may depend on the first.  All the code I’ve shown is incorporated into the chatbot from last post in the constructor and in the chat method, where the function call to the retriever happens and is shown below:  def chat(self, question: str) -&gt; str:     docs = self.retriever.retrieve(question)          prompt = build_prompt_with_history(         self.memory.last_n_turns(self.n_turns),          docs,         question     )      text = self.lm.generate_text(prompt)     reply = extract_assistant_reply(text)      self.memory.add_user(question)     self.memory.add_assistant(reply)     return reply   That is essentially all that changes (besides some parameter passing). Like before, the chat logs and conversation states are also saved, but I won’t include them since we covered that in the last post. Before we move on, we should see what the document we will be using looks like:  {     &quot;id&quot;:&quot;doc_001&quot;,     &quot;text&quot;:&quot;Quantum entanglement describes correlations between particles that cannot be explained classically.&quot;,     &quot;topic&quot;:&quot;physics&quot; } {     &quot;id&quot;:&quot;doc_002&quot;,     &quot;text&quot;:&quot;The Higgs boson explains how particles acquire mass through interaction with the Higgs field.&quot;,     &quot;topic&quot;:&quot;physics&quot; } {     &quot;id&quot;:&quot;doc_003&quot;,     &quot;text&quot;:&quot;Transformers rely on self-attention mechanisms to model token relationships.&quot;,     &quot;topic&quot;:&quot;ml&quot; }   Each piece of information contains an ID and a topic. The ID is used so that you know which piece of information will be used in that specific query can be identified and logged. The topic can be used for more in-depth and topic-specific queries where one grabs all the information related to a topic. The text is the information that will be queried.  Now that we’ve gone over all the important pieces, let’s run the code and see how well it works. Although initial testing was done with the GPT-2 model, I will only show the GPT-4.1 nano model output since we know it outperforms the GPT-2 model. As before, we will build the user interface (UI) with Gradio [3].    From the figure we can see that the questions I inputted are in fact being answered using the information from the document. Of course, the model then adds a bit more information since I have the max output tokens set to $100$, but we can see that the first sentence is just a slight rewording of the information we provided.  We have now created a RAG-based chatbot that uses internal documents to answer user queries. We went over how the query is performed and demonstrated a simple way of processing the information. We also discussed where and how the information gets included to ensure that the model uses it when generating an output. Finally, we showed a basic example as to how the documents can organized. In demonstrating the model output, we saw that our RAG model did in fact used the information obtained from the document to answer our questions.  The RAG process can be scaled by using a different search function since FAISS is CPU-based and IndexFlatL2 is a brute-force nearest-neighbor search. Additionally, the query and embeddings creation is synchronous, which means that it is performed at every user query. An efficient RAG model would pre-compute the embeddings and store them for retrieval. We can also have more complicated documents such as PDFs that we can scrape and store. Ideally, a database can be pre-built to avoid unnecessary computations that account for latency in the output. Another step can be added to the query that involves metadata filtering, such as keyword search, which can greatly improve the fidelity of the output, especially as more information is added to the library the model pulls from.  Note that while RAG is definitely a powerful tool, it is not fool-proof. The text generation from the model is probabilistic and the context obtained from the documents may not be enough to answer a question successfully. The information needed may not be contained in the documents retrieved or perhaps it is ambiguous and the model cannot successfully reason through it. Care must be taken when analyzing outputs to ensure that the model did not hallucinate and produce a wrong solution.  The code presented in this post can be found on my Github under the rag-chatbot repo [3]. Feel free to reach out if you have any questions about what we covered this week. Next time we’ll discuss parameter-efficient fine-tuning using low-rank adaptation (LoRA). Stay tuned!  [1] Matthijs Douze al., The Faiss library, 2024.  [2] Abubakar Abid, Ali Abdalla, Ali Abid, et al., Gradio: Hassle-Free Sharing and Testing of ML Models in the Wild, arXiv preprint arXiv:1906.02569, 2019.  [3] Alberto J. Garcia, Conversational Chatbot with Retrieval-Augmented Generation (RAG), 2026. Available at: https://github.com/AJG91/rag-chatbot. ⬅ Back to Home">
+
+
+
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="AJG&#39;s Homepage">
+<meta property="og:title" content="RAG chatbot: Querying documents effectively">
+<meta property="og:url" content="https://ajg91.github.io//posts/large-language-models/rag-chatbot/">
+
+
+  <meta property="og:description" content="March 08, 2026  This week I will demonstrate the basics of building a personal assistant with a focus on retrieval-augmented generation (RAG) to support long-term context without token limits. We will be using the chatbot we developed in the last post, as well as the GPT-2 and GPT-4.1 nano models.  Retrieval-augmented generation (RAG) is an architecture used for language models that combines retrieving information with text generation. As such, RAG is meant to influence the text generated from a languange model. Essentially, one creates a bank filled with information. The information relevant to the query initiated by the user is retrieved from the bank and is then used to create a context prompt. The prompt is passed into the text generating model with clear instructions to base the output on the retrieved information. This architecture allows for outputs grounded in previously obtained knowledge as opposed to relying on what the model learned during its training phase.  Langue models are not easy nor cheap to consistantly train as more information is obtained (see post). As such, they do not have access to recent data. When prompted, they can output outdated or even worse, completely wrong answers brought about by hallucinations. With RAG, you have a corpus of information you can periodically update and have the assistant chatbot retrieve the information to use as context for the text generation step without having to change the model’s weights. Additionally, RAG is a way for private companies to store information that is only meant to be accessible by employees. These internal documents can then be queried without including the information into the training set of a model. Overall, RAG provides a way to continuously update knowledge without having to retrain the model.  The first step is to define our parameters in a .yaml file and use SimpleNamespace to store them. In this case, the parameters are the following:  {   &quot;model_name&quot;: &quot;gpt2&quot;,   &quot;api_model_name&quot;: &quot;gpt-4.1-nano&quot;,    &quot;seed&quot;: 42,   &quot;n_turns&quot;: 6,    &quot;docs_dir&quot;: &quot;../data/raw/&quot;,   &quot;log_dir&quot;: &quot;../outputs/logs/&quot;,   &quot;state_dir&quot;: &quot;../outputs/state/&quot; }   The only new parameter compared to last post is docs_dir. As one would imagine, this is where the documents we will use for our RAG assistant are stored.  The chatbot code and Gradio wrapper are basically the same as the previous post. The only changes are two lines that I have now included in the class constructor:  DOCUMENTS = iter_jsonl_directory(docs_dir) self.retriever = DocsRetriever(DOCUMENTS)   The first line is used to grab all the .jsonl files in the directory (I’m only including one for proof-of-concept), pass the text through a processing step, append to a list, and output it. The second line initializes the documents retriever and prepares for query. Let’s dive deeper (docstrings are suppressed for brevity. See the file documents.py for more information):  def iter_jsonl_directory(directory: str) -&gt; list[str]:     directory = Path(directory)          all_text = []     for file_path in directory.glob(&quot;*.jsonl&quot;):         all_text.append(process_documents(file_path))          return [text for subtext in all_text for text in subtext]  def process_documents(path: str) -&gt; list[str]:     DOCUMENTS = []     for doc in iter_jsonl(path):         DOCUMENTS.extend(chunk_text(doc[&quot;text&quot;]))     return DOCUMENTS  def chunk_text(text: str, chunk_size: int = 80) -&gt; list[str]:     return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]   Since I’ve already described the primary purpose of the first function, let’s just into the next two functions, which is the processing step. For this example, the processing only entails breaking the text apart, known as chunking. For our purposes, we are breaking up the text at every $80$ characters.  What is the purpose of breaking the text up? Context windows have finite length. If you pass text longer than your context window, the text will get truncated. We want to avoid that since that would mean losing information crucial for the model output. Another issue could be giving too much context that the model ends up loosing the point of the query. You can image having a manager tasking you with priorities, but if he ends up dragging on for 30 minutes, it’ll be difficult to figure out exactly what he wants since you can become over-saturated with information. The same thing can happen with these models. To avoid any issues, we break the text up into managable pieces that we can insert into the context window.  When chunking the text, we also have to be conscious of what length to break the text up. I’ve already talked about what happens if the text is too long, but what if it’s not long enough? Going back to the manager example, if you manager gives you a one sentence priority list, this may not be a good thing because you may not have the context of the problem. Without context, you may solve the problem a way that is not valuable to the customer. The same thing occurs with these models. If your text is too short, the model will not have enough context to properly produce an output.  The next step is passing the text into the documents retriever. The code for this is (docstrings are suppressed for brevity. See the file retriever.py for more information):  class DocsRetriever:     def __init__(         self,          documents: list[str],          model: str = &quot;all-MiniLM-L6-v2&quot;     ):         self.documents = documents         self.model = SentenceTransformer(model)          embeddings = self.model.encode(documents, convert_to_numpy=True)         self.index = faiss.IndexFlatL2(embeddings.shape[1])         self.index.add(embeddings)      def retrieve(         self,          query: str,          k: int = 1     ) -&gt; list[str]:         query_emb = self.model.encode([query], convert_to_numpy=True)         _, idcs = self.index.search(query_emb, k)         return [self.documents[i] for i in idcs[0]]   This class is designed with the purpose of mapping text to vectors and to retrieve the documents that lie close to the query. In the constructor, we load a sentence-transformer model provided by Hugging Face called all-MiniLM-L6-v2. This model is nice to use because it’s embedding size is on the smaller end making it fast, but more complicated systems may need a bigger model. You can read more about it here. Now, we use this model calculate the embeddings, which is the portion that converts text to a dense vector, and returns them as a numpy array. Next, we create an index that we can use to organize the documents. For our example, we are using the FAISS (Facebook AI Similarity Search) library [3]. This library finds the nearest neighbors to a query vector efficiently. Since this is for proof-of-concept, we use a Euclidean distance, brute-force search. More efficient searches can be implemented, but IndexFlatL2 is enough for our example. More information can be found here. Finally, the embeddings are assigned an index.  When we go to retrieve, we pass in the query, created embeddings for the query using encode, and perform a search over all documents to find the one that lies closest to the query. As a note, we have set $k = 1$, which means that the search will return the highest matching document. Other options can be setting $k &gt; 1$ to return other documents that may also lie close, and using other algorithms to determine the best output. That is all it takes to retrieve documents for a query.  The last step is to inject the documents queried into the prompt. For this, we write functions that put together the prompt similar to the chatbot. The only difference is that now we purposely indicate to the model which information it should use to generate output text. I won’t copy over all the functions since they are mostly identical to what I showed in the previous post. I will only show the difference:  return (     f&quot;System prompt: {SYSTEM_PROMPT}\n\n&quot;     f&quot;Use ONLY the information below to answer.\n&quot;     f&quot;Context:\n{context}\n\n&quot;     f&quot;{history_text}\n&quot;     f&quot;User: {user_message}\n&quot;     f&quot;Assistant:&quot; )   We can see that when we inject the retrieved information into the prompt, we literally just add it into the prompt! We also specify to the model to answer the question using only the context obtained form the documents query. This step serves to constrain the text generation to only the context provided. Now, the model will know that it needs to use the specific information gathered from the documents to answer the user’s query. Note that we also keep the history (memory state) as before, since a second query may depend on the first.  All the code I’ve shown is incorporated into the chatbot from last post in the constructor and in the chat method, where the function call to the retriever happens and is shown below:  def chat(self, question: str) -&gt; str:     docs = self.retriever.retrieve(question)          prompt = build_prompt_with_history(         self.memory.last_n_turns(self.n_turns),          docs,         question     )      text = self.lm.generate_text(prompt)     reply = extract_assistant_reply(text)      self.memory.add_user(question)     self.memory.add_assistant(reply)     return reply   That is essentially all that changes (besides some parameter passing). Like before, the chat logs and conversation states are also saved, but I won’t include them since we covered that in the last post. Before we move on, we should see what the document we will be using looks like:  {     &quot;id&quot;:&quot;doc_001&quot;,     &quot;text&quot;:&quot;Quantum entanglement describes correlations between particles that cannot be explained classically.&quot;,     &quot;topic&quot;:&quot;physics&quot; } {     &quot;id&quot;:&quot;doc_002&quot;,     &quot;text&quot;:&quot;The Higgs boson explains how particles acquire mass through interaction with the Higgs field.&quot;,     &quot;topic&quot;:&quot;physics&quot; } {     &quot;id&quot;:&quot;doc_003&quot;,     &quot;text&quot;:&quot;Transformers rely on self-attention mechanisms to model token relationships.&quot;,     &quot;topic&quot;:&quot;ml&quot; }   Each piece of information contains an ID and a topic. The ID is used so that you know which piece of information will be used in that specific query can be identified and logged. The topic can be used for more in-depth and topic-specific queries where one grabs all the information related to a topic. The text is the information that will be queried.  Now that we’ve gone over all the important pieces, let’s run the code and see how well it works. Although initial testing was done with the GPT-2 model, I will only show the GPT-4.1 nano model output since we know it outperforms the GPT-2 model. As before, we will build the user interface (UI) with Gradio [3].    From the figure we can see that the questions I inputted are in fact being answered using the information from the document. Of course, the model then adds a bit more information since I have the max output tokens set to $100$, but we can see that the first sentence is just a slight rewording of the information we provided.  We have now created a RAG-based chatbot that uses internal documents to answer user queries. We went over how the query is performed and demonstrated a simple way of processing the information. We also discussed where and how the information gets included to ensure that the model uses it when generating an output. Finally, we showed a basic example as to how the documents can organized. In demonstrating the model output, we saw that our RAG model did in fact used the information obtained from the document to answer our questions.  The RAG process can be scaled by using a different search function since FAISS is CPU-based and IndexFlatL2 is a brute-force nearest-neighbor search. Additionally, the query and embeddings creation is synchronous, which means that it is performed at every user query. An efficient RAG model would pre-compute the embeddings and store them for retrieval. We can also have more complicated documents such as PDFs that we can scrape and store. Ideally, a database can be pre-built to avoid unnecessary computations that account for latency in the output. Another step can be added to the query that involves metadata filtering, such as keyword search, which can greatly improve the fidelity of the output, especially as more information is added to the library the model pulls from.  Note that while RAG is definitely a powerful tool, it is not fool-proof. The text generation from the model is probabilistic and the context obtained from the documents may not be enough to answer a question successfully. The information needed may not be contained in the documents retrieved or perhaps it is ambiguous and the model cannot successfully reason through it. Care must be taken when analyzing outputs to ensure that the model did not hallucinate and produce a wrong solution.  The code presented in this post can be found on my Github under the rag-chatbot repo [3]. Feel free to reach out if you have any questions about what we covered this week. Next time we’ll discuss parameter-efficient fine-tuning using low-rank adaptation (LoRA). Stay tuned!  [1] Matthijs Douze al., The Faiss library, 2024.  [2] Abubakar Abid, Ali Abdalla, Ali Abid, et al., Gradio: Hassle-Free Sharing and Testing of ML Models in the Wild, arXiv preprint arXiv:1906.02569, 2019.  [3] Alberto J. Garcia, Conversational Chatbot with Retrieval-Augmented Generation (RAG), 2026. Available at: https://github.com/AJG91/rag-chatbot. ⬅ Back to Home">
+
+
+
+
+
+
+
+  <meta property="article:published_time" content="2026-03-08T00:00:00-08:00">
+
+
+
+
+
+
+<link rel="canonical" href="https://ajg91.github.io//posts/large-language-models/rag-chatbot/">
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- end _includes/seo.html -->
+
+
+
+  <link href="/feed.xml" type="application/atom+xml" rel="alternate" title="AJG's Homepage Feed">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+  
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css"></noscript>
+
+
+
+    <script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$','$$'], ['\\[','\\]']]
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
+  </head>
+
+  <body class="layout--single" dir="ltr">
+    <nav class="skip-links">
+  <ul>
+    <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
+    <li><a href="#main" class="screen-reader-shortcut">Skip to content</a></li>
+    <li><a href="#footer" class="screen-reader-shortcut">Skip to footer</a></li>
+  </ul>
+</nav>
+
+    
+
+<div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        
+        <a class="site-title" href="/">
+          AJG&#39;s Homepage
+          
+        </a>
+        <ul class="visible-links"><li class="masthead__menu-item">
+              <a
+                href="/posts/"
+                
+                
+              >Posts</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/publications/"
+                
+                
+              >Publications</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/talks/"
+                
+                
+              >Talks</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/software/"
+                
+                
+              >Software</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/contact/"
+                
+                
+              >Contact Me</a>
+            </li></ul>
+        
+        <button class="greedy-nav__toggle hidden" type="button">
+          <span class="visually-hidden">Toggle menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+
+    <div class="initial-content">
+      
+
+
+
+
+  
+    
+
+
+
+<nav class="breadcrumbs">
+  <ol itemscope itemtype="https://schema.org/BreadcrumbList">
+    
+    
+    
+      
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/" itemprop="item"><span itemprop="name">Home</span></a>
+
+          <meta itemprop="position" content="1" />
+        </li>
+        <span class="sep">/</span>
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/posts" itemprop="item"><span itemprop="name">Posts</span></a>
+          <meta itemprop="position" content="2" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/large-language-models" itemprop="item"><span itemprop="name">Large language models</span></a>
+          <meta itemprop="position" content="3" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        <li class="current">RAG chatbot: Querying documents effectively</li>
+      
+    
+  </ol>
+</nav>
+
+  
+
+
+<div id="main" role="main">
+  
+
+
+  <article class="page" itemscope itemtype="https://schema.org/CreativeWork">
+    <meta itemprop="headline" content="RAG chatbot: Querying documents effectively">
+    <meta itemprop="description" content="March 08, 2026This week I will demonstrate the basics of building a personal assistant with a focus on retrieval-augmented generation (RAG) to support long-term context without token limits. We will be using the chatbot we developed in the last post, as well as the GPT-2 and GPT-4.1 nano models.Retrieval-augmented generation (RAG) is an architecture used for language models that combines retrieving information with text generation. As such, RAG is meant to influence the text generated from a languange model. Essentially, one creates a bank filled with information. The information relevant to the query initiated by the user is retrieved from the bank and is then used to create a context prompt. The prompt is passed into the text generating model with clear instructions to base the output on the retrieved information. This architecture allows for outputs grounded in previously obtained knowledge as opposed to relying on what the model learned during its training phase.Langue models are not easy nor cheap to consistantly train as more information is obtained (see post). As such, they do not have access to recent data. When prompted, they can output outdated or even worse, completely wrong answers brought about by hallucinations. With RAG, you have a corpus of information you can periodically update and have the assistant chatbot retrieve the information to use as context for the text generation step without having to change the model’s weights. Additionally, RAG is a way for private companies to store information that is only meant to be accessible by employees. These internal documents can then be queried without including the information into the training set of a model. Overall, RAG provides a way to continuously update knowledge without having to retrain the model.The first step is to define our parameters in a .yaml file and use SimpleNamespace to store them. In this case, the parameters are the following:{  &quot;model_name&quot;: &quot;gpt2&quot;,  &quot;api_model_name&quot;: &quot;gpt-4.1-nano&quot;,  &quot;seed&quot;: 42,  &quot;n_turns&quot;: 6,  &quot;docs_dir&quot;: &quot;../data/raw/&quot;,  &quot;log_dir&quot;: &quot;../outputs/logs/&quot;,  &quot;state_dir&quot;: &quot;../outputs/state/&quot;}The only new parameter compared to last post is docs_dir. As one would imagine, this is where the documents we will use for our RAG assistant are stored.The chatbot code and Gradio wrapper are basically the same as the previous post. The only changes are two lines that I have now included in the class constructor:DOCUMENTS = iter_jsonl_directory(docs_dir)self.retriever = DocsRetriever(DOCUMENTS)The first line is used to grab all the .jsonl files in the directory (I’m only including one for proof-of-concept), pass the text through a processing step, append to a list, and output it. The second line initializes the documents retriever and prepares for query. Let’s dive deeper (docstrings are suppressed for brevity. See the file documents.py for more information):def iter_jsonl_directory(directory: str) -&gt; list[str]:    directory = Path(directory)        all_text = []    for file_path in directory.glob(&quot;*.jsonl&quot;):        all_text.append(process_documents(file_path))        return [text for subtext in all_text for text in subtext]def process_documents(path: str) -&gt; list[str]:    DOCUMENTS = []    for doc in iter_jsonl(path):        DOCUMENTS.extend(chunk_text(doc[&quot;text&quot;]))    return DOCUMENTSdef chunk_text(text: str, chunk_size: int = 80) -&gt; list[str]:    return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]Since I’ve already described the primary purpose of the first function, let’s just into the next two functions, which is the processing step. For this example, the processing only entails breaking the text apart, known as chunking. For our purposes, we are breaking up the text at every $80$ characters.What is the purpose of breaking the text up? Context windows have finite length. If you pass text longer than your context window, the text will get truncated. We want to avoid that since that would mean losing information crucial for the model output. Another issue could be giving too much context that the model ends up loosing the point of the query. You can image having a manager tasking you with priorities, but if he ends up dragging on for 30 minutes, it’ll be difficult to figure out exactly what he wants since you can become over-saturated with information. The same thing can happen with these models. To avoid any issues, we break the text up into managable pieces that we can insert into the context window.When chunking the text, we also have to be conscious of what length to break the text up. I’ve already talked about what happens if the text is too long, but what if it’s not long enough? Going back to the manager example, if you manager gives you a one sentence priority list, this may not be a good thing because you may not have the context of the problem. Without context, you may solve the problem a way that is not valuable to the customer. The same thing occurs with these models. If your text is too short, the model will not have enough context to properly produce an output.The next step is passing the text into the documents retriever. The code for this is (docstrings are suppressed for brevity. See the file retriever.py for more information):class DocsRetriever:    def __init__(        self,         documents: list[str],         model: str = &quot;all-MiniLM-L6-v2&quot;    ):        self.documents = documents        self.model = SentenceTransformer(model)        embeddings = self.model.encode(documents, convert_to_numpy=True)        self.index = faiss.IndexFlatL2(embeddings.shape[1])        self.index.add(embeddings)    def retrieve(        self,         query: str,         k: int = 1    ) -&gt; list[str]:        query_emb = self.model.encode([query], convert_to_numpy=True)        _, idcs = self.index.search(query_emb, k)        return [self.documents[i] for i in idcs[0]]This class is designed with the purpose of mapping text to vectors and to retrieve the documents that lie close to the query. In the constructor, we load a sentence-transformer model provided by Hugging Face called all-MiniLM-L6-v2. This model is nice to use because it’s embedding size is on the smaller end making it fast, but more complicated systems may need a bigger model. You can read more about it here. Now, we use this model calculate the embeddings, which is the portion that converts text to a dense vector, and returns them as a numpy array. Next, we create an index that we can use to organize the documents. For our example, we are using the FAISS (Facebook AI Similarity Search) library [3]. This library finds the nearest neighbors to a query vector efficiently. Since this is for proof-of-concept, we use a Euclidean distance, brute-force search. More efficient searches can be implemented, but IndexFlatL2 is enough for our example. More information can be found here. Finally, the embeddings are assigned an index.When we go to retrieve, we pass in the query, created embeddings for the query using encode, and perform a search over all documents to find the one that lies closest to the query. As a note, we have set $k = 1$, which means that the search will return the highest matching document. Other options can be setting $k &gt; 1$ to return other documents that may also lie close, and using other algorithms to determine the best output. That is all it takes to retrieve documents for a query.The last step is to inject the documents queried into the prompt. For this, we write functions that put together the prompt similar to the chatbot. The only difference is that now we purposely indicate to the model which information it should use to generate output text. I won’t copy over all the functions since they are mostly identical to what I showed in the previous post. I will only show the difference:return (    f&quot;System prompt: {SYSTEM_PROMPT}\n\n&quot;    f&quot;Use ONLY the information below to answer.\n&quot;    f&quot;Context:\n{context}\n\n&quot;    f&quot;{history_text}\n&quot;    f&quot;User: {user_message}\n&quot;    f&quot;Assistant:&quot;)We can see that when we inject the retrieved information into the prompt, we literally just add it into the prompt! We also specify to the model to answer the question using only the context obtained form the documents query. This step serves to constrain the text generation to only the context provided. Now, the model will know that it needs to use the specific information gathered from the documents to answer the user’s query. Note that we also keep the history (memory state) as before, since a second query may depend on the first.All the code I’ve shown is incorporated into the chatbot from last post in the constructor and in the chat method, where the function call to the retriever happens and is shown below:def chat(self, question: str) -&gt; str:    docs = self.retriever.retrieve(question)        prompt = build_prompt_with_history(        self.memory.last_n_turns(self.n_turns),         docs,        question    )    text = self.lm.generate_text(prompt)    reply = extract_assistant_reply(text)    self.memory.add_user(question)    self.memory.add_assistant(reply)    return replyThat is essentially all that changes (besides some parameter passing). Like before, the chat logs and conversation states are also saved, but I won’t include them since we covered that in the last post. Before we move on, we should see what the document we will be using looks like:{    &quot;id&quot;:&quot;doc_001&quot;,    &quot;text&quot;:&quot;Quantum entanglement describes correlations between particles that cannot be explained classically.&quot;,    &quot;topic&quot;:&quot;physics&quot;}{    &quot;id&quot;:&quot;doc_002&quot;,    &quot;text&quot;:&quot;The Higgs boson explains how particles acquire mass through interaction with the Higgs field.&quot;,    &quot;topic&quot;:&quot;physics&quot;}{    &quot;id&quot;:&quot;doc_003&quot;,    &quot;text&quot;:&quot;Transformers rely on self-attention mechanisms to model token relationships.&quot;,    &quot;topic&quot;:&quot;ml&quot;}Each piece of information contains an ID and a topic. The ID is used so that you know which piece of information will be used in that specific query can be identified and logged. The topic can be used for more in-depth and topic-specific queries where one grabs all the information related to a topic. The text is the information that will be queried.Now that we’ve gone over all the important pieces, let’s run the code and see how well it works. Although initial testing was done with the GPT-2 model, I will only show the GPT-4.1 nano model output since we know it outperforms the GPT-2 model. As before, we will build the user interface (UI) with Gradio [3].From the figure we can see that the questions I inputted are in fact being answered using the information from the document. Of course, the model then adds a bit more information since I have the max output tokens set to $100$, but we can see that the first sentence is just a slight rewording of the information we provided.We have now created a RAG-based chatbot that uses internal documents to answer user queries. We went over how the query is performed and demonstrated a simple way of processing the information. We also discussed where and how the information gets included to ensure that the model uses it when generating an output. Finally, we showed a basic example as to how the documents can organized. In demonstrating the model output, we saw that our RAG model did in fact used the information obtained from the document to answer our questions.The RAG process can be scaled by using a different search function since FAISS is CPU-based and IndexFlatL2 is a brute-force nearest-neighbor search. Additionally, the query and embeddings creation is synchronous, which means that it is performed at every user query. An efficient RAG model would pre-compute the embeddings and store them for retrieval. We can also have more complicated documents such as PDFs that we can scrape and store. Ideally, a database can be pre-built to avoid unnecessary computations that account for latency in the output. Another step can be added to the query that involves metadata filtering, such as keyword search, which can greatly improve the fidelity of the output, especially as more information is added to the library the model pulls from.Note that while RAG is definitely a powerful tool, it is not fool-proof. The text generation from the model is probabilistic and the context obtained from the documents may not be enough to answer a question successfully. The information needed may not be contained in the documents retrieved or perhaps it is ambiguous and the model cannot successfully reason through it. Care must be taken when analyzing outputs to ensure that the model did not hallucinate and produce a wrong solution.The code presented in this post can be found on my Github under the rag-chatbot repo [3]. Feel free to reach out if you have any questions about what we covered this week. Next time we’ll discuss parameter-efficient fine-tuning using low-rank adaptation (LoRA). Stay tuned![1] Matthijs Douze al., The Faiss library, 2024. [2] Abubakar Abid, Ali Abdalla, Ali Abid, et al., Gradio: Hassle-Free Sharing and Testing of ML Models in the Wild, arXiv preprint arXiv:1906.02569, 2019. [3] Alberto J. Garcia, Conversational Chatbot with Retrieval-Augmented Generation (RAG), 2026. Available at: https://github.com/AJG91/rag-chatbot.⬅ Back to Home">
+    <meta itemprop="datePublished" content="2026-03-08T00:00:00-08:00">
+    
+
+    <div class="page__inner-wrap">
+      
+        <header>
+          <h1 id="page-title" class="page__title" itemprop="headline">
+            <a href="https://ajg91.github.io//posts/large-language-models/rag-chatbot/" itemprop="url">RAG chatbot: Querying documents effectively
+</a>
+          </h1>
+          
+
+
+        </header>
+      
+
+      <section class="page__content" itemprop="text">
+        
+        <p class="post-date">March 08, 2026</p>
+
+<p>This week I will demonstrate the basics of building a personal assistant with a focus on retrieval-augmented generation (RAG) to support long-term context without token limits. We will be using the chatbot we developed in the last <a href="https://ajg91.github.io/posts/large-language-models/basic-chatbot/" title="chatbot-post">post</a>, as well as the GPT-2 and GPT-4.1 nano models.</p>
+
+<p>Retrieval-augmented generation (RAG) is an architecture used for language models that combines retrieving information with text generation. As such, RAG is meant to influence the text generated from a languange model. Essentially, one creates a bank filled with information. The information relevant to the query initiated by the user is retrieved from the bank and is then used to create a context prompt. The prompt is passed into the text generating model with clear instructions to base the output on the retrieved information. This architecture allows for outputs grounded in previously obtained knowledge as opposed to relying on what the model learned during its training phase.</p>
+
+<p>Langue models are not easy nor cheap to consistantly train as more information is obtained (see <a href="https://ajg91.github.io/posts/large-language-models/decoder-gpt-2-example/" title="gpt-2-gen-post">post</a>). As such, they do not have access to recent data. When prompted, they can output outdated or even worse, completely wrong answers brought about by hallucinations. With RAG, you have a corpus of information you can periodically update and have the assistant chatbot retrieve the information to use as context for the text generation step without having to change the model’s weights. Additionally, RAG is a way for private companies to store information that is only meant to be accessible by employees. These internal documents can then be queried without including the information into the training set of a model. Overall, RAG provides a way to continuously update knowledge without having to retrain the model.</p>
+
+<p>The first step is to define our parameters in a <code class="language-plaintext highlighter-rouge">.yaml</code> file and use SimpleNamespace to store them. In this case, the parameters are the following:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span>
+  <span class="sh">"</span><span class="s">model_name</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">gpt2</span><span class="sh">"</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">api_model_name</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">gpt-4.1-nano</span><span class="sh">"</span><span class="p">,</span>
+
+  <span class="sh">"</span><span class="s">seed</span><span class="sh">"</span><span class="p">:</span> <span class="mi">42</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">n_turns</span><span class="sh">"</span><span class="p">:</span> <span class="mi">6</span><span class="p">,</span>
+
+  <span class="sh">"</span><span class="s">docs_dir</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">../data/raw/</span><span class="sh">"</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">log_dir</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">../outputs/logs/</span><span class="sh">"</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">state_dir</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">../outputs/state/</span><span class="sh">"</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>The only new parameter compared to last post is <code class="language-plaintext highlighter-rouge">docs_dir</code>. As one would imagine, this is where the documents we will use for our RAG assistant are stored.</p>
+
+<p>The chatbot code and Gradio wrapper are basically the same as the previous post. The only changes are two lines that I have now included in the class constructor:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">DOCUMENTS</span> <span class="o">=</span> <span class="nf">iter_jsonl_directory</span><span class="p">(</span><span class="n">docs_dir</span><span class="p">)</span>
+<span class="n">self</span><span class="p">.</span><span class="n">retriever</span> <span class="o">=</span> <span class="nc">DocsRetriever</span><span class="p">(</span><span class="n">DOCUMENTS</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>The first line is used to grab all the <code class="language-plaintext highlighter-rouge">.jsonl</code> files in the directory (I’m only including one for proof-of-concept), pass the text through a processing step, append to a list, and output it. The second line initializes the documents retriever and prepares for query. Let’s dive deeper (docstrings are suppressed for brevity. See the file <code class="language-plaintext highlighter-rouge">documents.py</code> for more information):</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">iter_jsonl_directory</span><span class="p">(</span><span class="n">directory</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="n">directory</span> <span class="o">=</span> <span class="nc">Path</span><span class="p">(</span><span class="n">directory</span><span class="p">)</span>
+    
+    <span class="n">all_text</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">file_path</span> <span class="ow">in</span> <span class="n">directory</span><span class="p">.</span><span class="nf">glob</span><span class="p">(</span><span class="sh">"</span><span class="s">*.jsonl</span><span class="sh">"</span><span class="p">):</span>
+        <span class="n">all_text</span><span class="p">.</span><span class="nf">append</span><span class="p">(</span><span class="nf">process_documents</span><span class="p">(</span><span class="n">file_path</span><span class="p">))</span>
+    
+    <span class="k">return</span> <span class="p">[</span><span class="n">text</span> <span class="k">for</span> <span class="n">subtext</span> <span class="ow">in</span> <span class="n">all_text</span> <span class="k">for</span> <span class="n">text</span> <span class="ow">in</span> <span class="n">subtext</span><span class="p">]</span>
+
+<span class="k">def</span> <span class="nf">process_documents</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="n">DOCUMENTS</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">doc</span> <span class="ow">in</span> <span class="nf">iter_jsonl</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+        <span class="n">DOCUMENTS</span><span class="p">.</span><span class="nf">extend</span><span class="p">(</span><span class="nf">chunk_text</span><span class="p">(</span><span class="n">doc</span><span class="p">[</span><span class="sh">"</span><span class="s">text</span><span class="sh">"</span><span class="p">]))</span>
+    <span class="k">return</span> <span class="n">DOCUMENTS</span>
+
+<span class="k">def</span> <span class="nf">chunk_text</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">chunk_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">80</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="n">chunk_size</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nf">len</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">chunk_size</span><span class="p">)]</span>
+</code></pre></div></div>
+
+<p>Since I’ve already described the primary purpose of the first function, let’s just into the next two functions, which is the processing step. For this example, the processing only entails breaking the text apart, known as chunking. For our purposes, we are breaking up the text at every $80$ characters.</p>
+
+<p>What is the purpose of breaking the text up? Context windows have finite length. If you pass text longer than your context window, the text will get truncated. We want to avoid that since that would mean losing information crucial for the model output. Another issue could be giving too much context that the model ends up loosing the point of the query. You can image having a manager tasking you with priorities, but if he ends up dragging on for 30 minutes, it’ll be difficult to figure out exactly what he wants since you can become over-saturated with information. The same thing can happen with these models. To avoid any issues, we break the text up into managable pieces that we can insert into the context window.</p>
+
+<p>When chunking the text, we also have to be conscious of what length to break the text up. I’ve already talked about what happens if the text is too long, but what if it’s not long enough? Going back to the manager example, if you manager gives you a one sentence priority list, this may not be a good thing because you may not have the context of the problem. Without context, you may solve the problem a way that is not valuable to the customer. The same thing occurs with these models. If your text is too short, the model will not have enough context to properly produce an output.</p>
+
+<p>The next step is passing the text into the documents retriever. The code for this is (docstrings are suppressed for brevity. See the file <code class="language-plaintext highlighter-rouge">retriever.py</code> for more information):</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">DocsRetriever</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">,</span> 
+        <span class="n">documents</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> 
+        <span class="n">model</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="sh">"</span><span class="s">all-MiniLM-L6-v2</span><span class="sh">"</span>
+    <span class="p">):</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">documents</span> <span class="o">=</span> <span class="n">documents</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">model</span> <span class="o">=</span> <span class="nc">SentenceTransformer</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+
+        <span class="n">embeddings</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">model</span><span class="p">.</span><span class="nf">encode</span><span class="p">(</span><span class="n">documents</span><span class="p">,</span> <span class="n">convert_to_numpy</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">index</span> <span class="o">=</span> <span class="n">faiss</span><span class="p">.</span><span class="nc">IndexFlatL2</span><span class="p">(</span><span class="n">embeddings</span><span class="p">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">index</span><span class="p">.</span><span class="nf">add</span><span class="p">(</span><span class="n">embeddings</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">retrieve</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">,</span> 
+        <span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> 
+        <span class="n">k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="n">query_emb</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">model</span><span class="p">.</span><span class="nf">encode</span><span class="p">([</span><span class="n">query</span><span class="p">],</span> <span class="n">convert_to_numpy</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">idcs</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">index</span><span class="p">.</span><span class="nf">search</span><span class="p">(</span><span class="n">query_emb</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">self</span><span class="p">.</span><span class="n">documents</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">idcs</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
+</code></pre></div></div>
+
+<p>This class is designed with the purpose of mapping text to vectors and to retrieve the documents that lie close to the query. In the constructor, we load a sentence-transformer model provided by Hugging Face called <em>all-MiniLM-L6-v2</em>. This model is nice to use because it’s embedding size is on the smaller end making it fast, but more complicated systems may need a bigger model. You can read more about it <a href="https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2" title="sentence-transformer">here</a>. Now, we use this model calculate the embeddings, which is the portion that converts text to a dense vector, and returns them as a numpy array. Next, we create an index that we can use to organize the documents. For our example, we are using the FAISS (Facebook AI Similarity Search) library <a class="citation" href="#douze2024faiss">[1]</a>. This library finds the nearest neighbors to a query vector efficiently. Since this is for proof-of-concept, we use a Euclidean distance, brute-force search. More efficient searches can be implemented, but <code class="language-plaintext highlighter-rouge">IndexFlatL2</code> is enough for our example. More information can be found <a href="https://github.com/facebookresearch/faiss/wiki/Faiss-indexes" title="faiss-index">here</a>. Finally, the embeddings are assigned an index.</p>
+
+<p>When we go to retrieve, we pass in the query, created embeddings for the query using <code class="language-plaintext highlighter-rouge">encode</code>, and perform a search over all documents to find the one that lies closest to the query. As a note, we have set $k = 1$, which means that the search will return the highest matching document. Other options can be setting $k &gt; 1$ to return other documents that may also lie close, and using other algorithms to determine the best output. That is all it takes to retrieve documents for a query.</p>
+
+<p>The last step is to inject the documents queried into the prompt. For this, we write functions that put together the prompt similar to the chatbot. The only difference is that now we purposely indicate to the model which information it should use to generate output text. I won’t copy over all the functions since they are mostly identical to what I showed in the previous post. I will only show the difference:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nf">return </span><span class="p">(</span>
+    <span class="sa">f</span><span class="sh">"</span><span class="s">System prompt: </span><span class="si">{</span><span class="n">SYSTEM_PROMPT</span><span class="si">}</span><span class="se">\n\n</span><span class="sh">"</span>
+    <span class="sa">f</span><span class="sh">"</span><span class="s">Use ONLY the information below to answer.</span><span class="se">\n</span><span class="sh">"</span>
+    <span class="sa">f</span><span class="sh">"</span><span class="s">Context:</span><span class="se">\n</span><span class="si">{</span><span class="n">context</span><span class="si">}</span><span class="se">\n\n</span><span class="sh">"</span>
+    <span class="sa">f</span><span class="sh">"</span><span class="si">{</span><span class="n">history_text</span><span class="si">}</span><span class="se">\n</span><span class="sh">"</span>
+    <span class="sa">f</span><span class="sh">"</span><span class="s">User: </span><span class="si">{</span><span class="n">user_message</span><span class="si">}</span><span class="se">\n</span><span class="sh">"</span>
+    <span class="sa">f</span><span class="sh">"</span><span class="s">Assistant:</span><span class="sh">"</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>We can see that when we inject the retrieved information into the prompt, we literally just add it into the prompt! We also specify to the model to answer the question using only the context obtained form the documents query. This step serves to constrain the text generation to only the context provided. Now, the model will know that it needs to use the specific information gathered from the documents to answer the user’s query. Note that we also keep the history (memory state) as before, since a second query may depend on the first.</p>
+
+<p>All the code I’ve shown is incorporated into the chatbot from last post in the constructor and in the <code class="language-plaintext highlighter-rouge">chat</code> method, where the function call to the retriever happens and is shown below:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">chat</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">question</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">docs</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">retriever</span><span class="p">.</span><span class="nf">retrieve</span><span class="p">(</span><span class="n">question</span><span class="p">)</span>
+    
+    <span class="n">prompt</span> <span class="o">=</span> <span class="nf">build_prompt_with_history</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">memory</span><span class="p">.</span><span class="nf">last_n_turns</span><span class="p">(</span><span class="n">self</span><span class="p">.</span><span class="n">n_turns</span><span class="p">),</span> 
+        <span class="n">docs</span><span class="p">,</span>
+        <span class="n">question</span>
+    <span class="p">)</span>
+
+    <span class="n">text</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">lm</span><span class="p">.</span><span class="nf">generate_text</span><span class="p">(</span><span class="n">prompt</span><span class="p">)</span>
+    <span class="n">reply</span> <span class="o">=</span> <span class="nf">extract_assistant_reply</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+
+    <span class="n">self</span><span class="p">.</span><span class="n">memory</span><span class="p">.</span><span class="nf">add_user</span><span class="p">(</span><span class="n">question</span><span class="p">)</span>
+    <span class="n">self</span><span class="p">.</span><span class="n">memory</span><span class="p">.</span><span class="nf">add_assistant</span><span class="p">(</span><span class="n">reply</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">reply</span>
+</code></pre></div></div>
+
+<p>That is essentially all that changes (besides some parameter passing). Like before, the chat logs and conversation states are also saved, but I won’t include them since we covered that in the last post. Before we move on, we should see what the document we will be using looks like:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span>
+    <span class="sh">"</span><span class="s">id</span><span class="sh">"</span><span class="p">:</span><span class="sh">"</span><span class="s">doc_001</span><span class="sh">"</span><span class="p">,</span>
+    <span class="sh">"</span><span class="s">text</span><span class="sh">"</span><span class="p">:</span><span class="sh">"</span><span class="s">Quantum entanglement describes correlations between particles that cannot be explained classically.</span><span class="sh">"</span><span class="p">,</span>
+    <span class="sh">"</span><span class="s">topic</span><span class="sh">"</span><span class="p">:</span><span class="sh">"</span><span class="s">physics</span><span class="sh">"</span>
+<span class="p">}</span>
+<span class="p">{</span>
+    <span class="sh">"</span><span class="s">id</span><span class="sh">"</span><span class="p">:</span><span class="sh">"</span><span class="s">doc_002</span><span class="sh">"</span><span class="p">,</span>
+    <span class="sh">"</span><span class="s">text</span><span class="sh">"</span><span class="p">:</span><span class="sh">"</span><span class="s">The Higgs boson explains how particles acquire mass through interaction with the Higgs field.</span><span class="sh">"</span><span class="p">,</span>
+    <span class="sh">"</span><span class="s">topic</span><span class="sh">"</span><span class="p">:</span><span class="sh">"</span><span class="s">physics</span><span class="sh">"</span>
+<span class="p">}</span>
+<span class="p">{</span>
+    <span class="sh">"</span><span class="s">id</span><span class="sh">"</span><span class="p">:</span><span class="sh">"</span><span class="s">doc_003</span><span class="sh">"</span><span class="p">,</span>
+    <span class="sh">"</span><span class="s">text</span><span class="sh">"</span><span class="p">:</span><span class="sh">"</span><span class="s">Transformers rely on self-attention mechanisms to model token relationships.</span><span class="sh">"</span><span class="p">,</span>
+    <span class="sh">"</span><span class="s">topic</span><span class="sh">"</span><span class="p">:</span><span class="sh">"</span><span class="s">ml</span><span class="sh">"</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Each piece of information contains an ID and a topic. The ID is used so that you know which piece of information will be used in that specific query can be identified and logged. The topic can be used for more in-depth and topic-specific queries where one grabs all the information related to a topic. The text is the information that will be queried.</p>
+
+<p>Now that we’ve gone over all the important pieces, let’s run the code and see how well it works. Although initial testing was done with the GPT-2 model, I will only show the GPT-4.1 nano model output since we know it outperforms the GPT-2 model. As before, we will build the user interface (UI) with Gradio <a class="citation" href="#abid2019gradio">[2]</a>.</p>
+
+<p><img src="/assets/images/rag_chatbot/rag_output.png" alt="rag_chatbot" /></p>
+
+<p>From the figure we can see that the questions I inputted are in fact being answered using the information from the document. Of course, the model then adds a bit more information since I have the max output tokens set to $100$, but we can see that the first sentence is just a slight rewording of the information we provided.</p>
+
+<p>We have now created a RAG-based chatbot that uses internal documents to answer user queries. We went over how the query is performed and demonstrated a simple way of processing the information. We also discussed where and how the information gets included to ensure that the model uses it when generating an output. Finally, we showed a basic example as to how the documents can organized. In demonstrating the model output, we saw that our RAG model did in fact used the information obtained from the document to answer our questions.</p>
+
+<p>The RAG process can be scaled by using a different search function since FAISS is CPU-based and <code class="language-plaintext highlighter-rouge">IndexFlatL2</code> is a brute-force nearest-neighbor search. Additionally, the query and embeddings creation is synchronous, which means that it is performed at every user query. An efficient RAG model would pre-compute the embeddings and store them for retrieval. We can also have more complicated documents such as PDFs that we can scrape and store. Ideally, a database can be pre-built to avoid unnecessary computations that account for latency in the output. Another step can be added to the query that involves metadata filtering, such as keyword search, which can greatly improve the fidelity of the output, especially as more information is added to the library the model pulls from.</p>
+
+<p>Note that while RAG is definitely a powerful tool, it is not fool-proof. The text generation from the model is probabilistic and the context obtained from the documents may not be enough to answer a question successfully. The information needed may not be contained in the documents retrieved or perhaps it is ambiguous and the model cannot successfully reason through it. Care must be taken when analyzing outputs to ensure that the model did not hallucinate and produce a wrong solution.</p>
+
+<p>The code presented in this post can be found on my Github under the <a href="https://github.com/AJG91/rag-chatbot" title="rag-chatbot-repo">rag-chatbot</a> repo <a class="citation" href="#Garcia2026RAGChatbot">[3]</a>. Feel free to reach out if you have any questions about what we covered this week. Next time we’ll discuss parameter-efficient fine-tuning using low-rank adaptation (LoRA). Stay tuned!</p>
+
+<ol class="bibliography"><li><span id="douze2024faiss">[1] Matthijs Douze al., <i>The Faiss library</i>, 2024. </span></li>
+<li><span id="abid2019gradio">[2] Abubakar Abid, Ali Abdalla, Ali Abid, et al., <i>Gradio: Hassle-Free Sharing and Testing of ML Models in the Wild</i>, arXiv preprint arXiv:1906.02569, 2019. </span></li>
+<li><span id="Garcia2026RAGChatbot">[3] Alberto J. Garcia, <i>Conversational Chatbot with Retrieval-Augmented Generation (RAG)</i>, 2026. Available at: https://github.com/AJG91/rag-chatbot.</span></li></ol>
+<p><a href="/" class="btn">⬅ Back to Home</a></p>
+
+        
+      </section>
+
+      <footer class="page__meta">
+        
+        
+
+
+        
+
+  <p class="page__date"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Updated:</strong> <time class="dt-published" datetime="2026-03-08T00:00:00-08:00">March 8, 2026</time></p>
+
+      </footer>
+
+      
+
+      
+  <nav class="pagination">
+    
+      <a href="/posts/large-language-models/basic-chatbot/" class="pagination--pager" title="Basic chatbot: Keeping context awareness">Previous</a>
+    
+    
+      <a href="/posts/large-language-models/lora-adapter/" class="pagination--pager" title="LoRA model: Adapting GPT-2">Next</a>
+    
+  </nav>
+
+
+    </div>
+
+    
+  </article>
+
+  
+  
+</div>
+
+      
+    </div>
+
+    
+
+    <div id="footer" class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        
+
+<div class="page__footer-follow">
+  <ul class="social-icons">
+    
+
+    
+
+    
+      <li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+    
+  </ul>
+</div>
+
+
+<div class="page__footer-copyright">&copy; 2026 <a href="https://ajg91.github.io/">AJG&#39;s Homepage</a>. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/jekyll-themes/minimal-mistakes/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+
+  </body>
+</html>

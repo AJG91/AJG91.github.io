@@ -1,0 +1,555 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.27.3 by Michael Rose
+  Copyright 2013-2025 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE
+-->
+
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin _includes/seo.html --><title>Convolutional neural networks: MNIST dataset - AJG’s Homepage</title>
+<meta name="description" content="September 07, 2025  Today we will learn about convolutional neural networks (CNNs). A CNN is a neural network designed to process grid-like data, such as images. It works by applying a convolution, filters (usually small $n \times n$ matrices) that slide over the data to extract useful features, across the 2D grid to detect features such as edges and shapes. We can apply these neural networks to images so that the network can learn how to classify images. In this post, we will construct a CNN and apply it to preprocessed images known as the MNIST dataset.  What is MNIST? MNIST stands for Modified National Institute of Standards and Technology, which is the institute that first created this dataset. The dataset is composed of thousands of grayscale images of handwritten numbers from $0$ to $9$ (ten categories). It is a very popular dataset used when one is first learning about CNNs since it is simple and easy to understand. The documentation for the function that we will be using to load the MNIST dataset can be found here. Here is a plot of a small subset of the dataset:    Let’s jump into creating the model.  First, we must import the data. I used the MNIST dataset provided by Scikit-learn:  from sklearn.datasets import fetch_openml  mnist = fetch_openml(&#39;mnist_784&#39;, version=1) X = mnist.data.values.astype(&#39;float32&#39;) / 255.0 y = mnist.target.astype(&#39;int64&#39;)   The $255$ is used to normalize the dataset between $0$ and $1$. This comes from the fact that a single byte ($8$ bits) can store $2^8=256$ different values. For images, this means there are $256$ different shades per each color channel. Note that we divide by $255$ instead of $256$ because Python starts at $0$ instead of $1$.  We must now split this dataset into a training set, validation set, and testing set. The training set will be used to train the model, the validation set is used to see how well the model has generalized at each epoch, and the testing set is used at the end to see how well the fully trained model can predict on a new dataset. While not everyone uses a validation set, it is good to have since it tells us how well our model is generalizing after each epoch. This will tell us at a glance whether or not our model is overfitting as it learns more.  # Train/validation split X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.1, random_state=42) X_train, X_test, y_train, y_test = train_test_split(X_train, y_train, test_size=0.1, random_state=42)   The function train_test_split() only splits data into two sets so we pass in the data twice to get all three datasets. The overall split is going to be $80\%$ training set, $10\%$ validation set, and $10\%$ testing set. We initialize the random_state so that the results are reproducible.  We also have to convert to PyTorch tensors and reshape the $X$ datasets so that the CNN can accept the data. The input expected for CNNs are $(N, C, H, W)$ where $N$ is batch size (number of images in a batch), $C$ is number of channels (for grayscale this is $1$), $H$ is the height of the image and $W$ the width. Our reshape will put the data into this format. This looks like so:  # # Convert to PyTorch tensors X_train = tc.tensor(X_train).view(-1, 1, 28, 28) y_train = tc.tensor(y_train.values) X_val = tc.tensor(X_val).view(-1, 1, 28, 28) y_val = tc.tensor(y_val.values) X_test = tc.tensor(X_test).view(-1, 1, 28, 28) y_test = tc.tensor(y_test.values)  # # DataLoaders train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=64, shuffle=True) val_loader = DataLoader(TensorDataset(X_val, y_val), batch_size=64) test_loader = DataLoader(TensorDataset(X_test, y_test), batch_size=64)   The last step above is to set up the data loaders. First, TensorDataset() is a function that pairs the features $X$ with the labels $y$ in a tuple. The function DataLoader() then provides an iterator that iterates over minibatches of the dataset with the batch size, in this case, being $64$. We also shuffle the training data so that the model doesn’t learn the ordering and can generalize better.  Now that we have taken care of the dataset, let’s move on to the actual CNN:  class SimpleCNN(nn.Module):     def __init__(self):         super().__init__()         self.conv = nn.Sequential(             nn.Conv2d(1, 32, 3, padding=1),             nn.ReLU(),             nn.MaxPool2d(2),             nn.Conv2d(32, 64, 3, padding=1),             nn.ReLU(),             nn.MaxPool2d(2)         )         self.fc = nn.Sequential(             nn.Flatten(),             nn.Linear(64*7*7, 128),             nn.ReLU(),             nn.Linear(128, 10)         )     def forward(self, x):         x = self.conv(x)         return self.fc(x)   Let’s unpack the class. First, we pass in nn.Module as an argument into the class and write super().__init__() in the constructor. This is called inheritance and ensures that all the functions normally available in the parent class nn.Module are also available in the child class, which is our define_CNN() class. In the constructor you will see nn.Sequential(), which is a container module that lets you build neural networks by stacking layers and activation functions sequentially. This container module is used in two different places, to define the CNN self.conv and the multi-layer perception (MLP) self.fc. The reason we define both a CNN and a MLP is because the CNN’s sole focus is to learn the features, while the MLP is supposed to take those features and map them to a final output (category). In this case, the CNN is known as the backbone and the MLP as the neck.  You may ask, “Why separate them?” Here are some reasons why we may want to build a model with a separate backbone and head:    Modularity:            You can change the convolutional part without touching the fully connected layers, or vice versa.       Example: Add more convolutional layers, or replace self.fc with a different classifier.           Conceptual clarity:            self.conv –&gt; extract patterns       self.fc –&gt; decide which class based on patterns           Industry standard:            Most CNNs follow this “feature extractor + classifier” design, which makes it easier to swap backbones or use pretrained models.           Let’s look at the model and break down each layer:  The convolutional neural network:     nn.Conv2d(1, 32, 3, padding=1)            This is a two-dimensional convolutional layer with $1$ input channel, $32$ output channels (learning $32$ features), and a convolutional kernel size of $3$. Finally, we zero pad with size $1$ to keep the spatial size of the image the same as the input since the function defaults to stride=$1$.           nn.ReLU()            This is a Rectified Linear Unit activation function. It is defined as $\text{ReLU}(x) = \text{max}(0, x)$. Essentially, it zeros out the negative values while introducing non-linearity. This type of activation function is simple and fast to use compared to others such as $\text{tanh}(x)$ or sigmoid.           nn.MaxPool2d(2)            This is a two-dimensional max pooling layer meant to reduce spatial dimensions while keeping important information. In this case, $2$ denotes that a $2 \times 2$ kernel is used. The max pooling layer will then take a $2 \times 2$ window and slide it over the feature map, taking the maximum value within the window and assigning it to the corresponding location in the output.           nn.Conv2d(32, 64, 3, padding=1)            This convolutional layer now has $32$ input channels, $64$ output channels, meaning it is meant to learn more finer details than the previous one since the outputs channels have now increased.           nn.ReLU()            Same as before.           nn.MaxPool2d(2)            Same as before.           The multi-layer perceptron:    nn.Flatten()            This is used to flatten the input tensor. The output of the CNN is a four-dimensional tensor. Since the input to the MLP is the output of the CNN, the tensor has to be flatten.           nn.Linear(64*7*7, 128)            This is a fully connected linear layer with input size $64*7*7$ (output of CNN) and output size of $128$ neurons.           nn.ReLU()            Same as before.           nn.Linear(128, 10)            This is another fully connected linear layer, but now the input size is $128$ and the output size is $10$, which matches how many categories we have ($0$-$9$).           The last part of the class is the function forward() that calls the CNN, then passes the output of the CNN to the MLP so that the features can be mapped to a category.  Now, let’s see how the model is trained. First, we need to initialize the CNN, the optimizer, and the loss function:  cnn = SimpleCNN() optimizer = optim.AdamW(cnn.parameters(), lr=0.001) loss_fn = nn.CrossEntropyLoss()   In this case, we will use the optimizer optim.AdamW() with an initial learning rate of $0.001$. This optimizer is a popular choice since it takes the fast convergence of Adam (another optimizer) and the generalization properties of SGD (optimizer we used last week) with weight decay. For more information on this optimizer see here. The loss function we will be using is cross-entropy loss. This loss function measures the difference between two probability distributions and is widely used for classification problems. For more information on this loss function see here.  The training will look like the following:  for epoch in range(3):     cnn.train()     correct, total = 0, 0     # Trains over the training set     for X, y in train_loader:         optimizer.zero_grad()         output = cnn(X)         loss = loss_fn(output, y)         loss.backward()         optimizer.step()                  preds = tc.softmax(output, dim=0).argmax(1)         correct += (preds == y).sum().item()         total += y.size(0)     train_acc = correct / total          # Evaluates over the validation set     cnn.eval() # put model in evaluation mode     correct, total = 0, 0     with tc.no_grad(): # no gradient tracking during evaluation         for X, y in val_loader:             output = cnn(X) # forward pass             preds = tc.softmax(output, dim=0).argmax(1)             correct += (preds == y).sum().item()             total += y.size(0)     val_acc = correct / total      print(f&quot;Epoch {epoch + 1},              Train Accuracy: {train_acc:.8f},              Validation Accuracy: {val_acc:.8f}&quot;)   I won’t go over all the details since some of this code is present in last week’s post, so I will only go over the new additions. In the training portion, we now implement tc.softmax() on the outputs, which converts the output prediction to probabilities that overall sum to $1$. The method .argmax(1) finds the index of the maximum value of each row. In essence, we are picking out the prediction that has the highest probability of matching up to the true target. The next line calculates how many of our predictions are actually correct, while the line after find the total number of targets that the model is supposed to predict. With these values, we can calculate a percentage of correct predictions (given by train_acc).  Like I previously mentioned, we use a validation set to determine how well our model generalizes between epochs. The next part of the loop does exactly this. We first put the model in evaluation mode using .eval(). While in evalulation mode, the weights of the model are not changed with the new data and processes like dropout are deactivated. The rest of the loop is identical to the training portion, which is just calculating the percentage of correct predictions (given by val_acc) with the validation set. After both calculation, we print out the current epoch and the accuracies. The model is trained and the validation set accuracy computed for a total of three epochs. Once done training, our model is now full trained and ready to go.  The next step is to see how the fully trained model generalizes with unseen data. We will use the same method of calculating the validation accuracy with the test data since the point is to see how well the model generalizes to unknown data. An example of what the print statement output looks like is the following:  Epoch 1, Train Accuracy: 0.88814815, Validation Accuracy: 0.94385714 Epoch 2, Train Accuracy: 0.95839506, Validation Accuracy: 0.96385714 Epoch 3, Train Accuracy: 0.97007055, Validation Accuracy: 0.96928571 Test Accuracy: 0.97190476   These numbers will change when the training is reran since we are not seeding the random numbers in PyTorch.  We have now fully trained a model composed of a CNN for feature learning and a MLP for learning the mapping between the data and the targets. We also included an evaluation over a validation set to check how well the model is generalizing to unknown data as it is being trained, and an evaluation over a test set to check how well the full trained model performs on unseen data. Overall, the model seems to be very accurate with a test accuracy of $\approx 97 \%$. That being said, there is still $\approx 3 \%$ of the test data that is not being categorized correctly. Let’s see a subset of these predictions to try to understand what is going on.  misclassified_images = [] misclassified_preds = [] true_labels = []  cnn.eval() with tc.no_grad():     for X, y in test_loader:         output = cnn(X)         preds = tc.softmax(output, dim=0).argmax(1)         mismatches = preds != y                  if mismatches.any():             misclassified_images.extend(X[mismatches].cpu())             misclassified_preds.extend(preds[mismatches].cpu())             true_labels.extend(y[mismatches].cpu())   Evaluating the misclassified images is similar to the evaluation block explained before. One of the differences is that we add mismatches = preds != y, which saves all the predictions that do not match up to the ground truth. We also include an if-statement that checks for any mismatches and, if found, saves the image, prediction, and ground truth. The method .cpu() moves the tensor from the GPU to the CPU. In this case, we don’t need to put it since we are training exclusively on the CPU, but it’s something to keep in mind. Plotting the misclassified images, we get the following:    From the image above, we can begin to understand why the model is misclassifying some numbers. The number in the upper left is supposed to be a $7$, but it was written in such a way that it can potentially be confused with a $9$. The number in the upper right is supposed to be an $8$, but it really looks like a $9$. The number $2$ in the bottom row does look like a $2$, but it’s understandable that the model may confuse it with an $8$ since the upper and lower loops look like what someone would do to write an $8$. With the subset of misclassified images we have plotted, it makes sense that the model may struggle with these cases, especially since we only trained it using a small CNN and three total epochs.  Overall, the model does a great job at correctly classifying the MNIST dataset, minus some small subset where the confusion can be attributed to messy numbers. As we saw, training a basic image recognition model is not difficult! Of course, these models are not perfect or fool-proof and with more complex images, we may need more layers, larger layers, or maybe more advanced machine learning techniques.  Feel free to reach out if you have any questions about what we covered this week. Next time, I will show you how to modularize and make improvements to the code. Stay tuned!  ⬅ Back to Home">
+
+
+
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="AJG&#39;s Homepage">
+<meta property="og:title" content="Convolutional neural networks: MNIST dataset">
+<meta property="og:url" content="https://ajg91.github.io//posts/machine-learning/convolutional-neural-network-with-mnist-dataset/">
+
+
+  <meta property="og:description" content="September 07, 2025  Today we will learn about convolutional neural networks (CNNs). A CNN is a neural network designed to process grid-like data, such as images. It works by applying a convolution, filters (usually small $n \times n$ matrices) that slide over the data to extract useful features, across the 2D grid to detect features such as edges and shapes. We can apply these neural networks to images so that the network can learn how to classify images. In this post, we will construct a CNN and apply it to preprocessed images known as the MNIST dataset.  What is MNIST? MNIST stands for Modified National Institute of Standards and Technology, which is the institute that first created this dataset. The dataset is composed of thousands of grayscale images of handwritten numbers from $0$ to $9$ (ten categories). It is a very popular dataset used when one is first learning about CNNs since it is simple and easy to understand. The documentation for the function that we will be using to load the MNIST dataset can be found here. Here is a plot of a small subset of the dataset:    Let’s jump into creating the model.  First, we must import the data. I used the MNIST dataset provided by Scikit-learn:  from sklearn.datasets import fetch_openml  mnist = fetch_openml(&#39;mnist_784&#39;, version=1) X = mnist.data.values.astype(&#39;float32&#39;) / 255.0 y = mnist.target.astype(&#39;int64&#39;)   The $255$ is used to normalize the dataset between $0$ and $1$. This comes from the fact that a single byte ($8$ bits) can store $2^8=256$ different values. For images, this means there are $256$ different shades per each color channel. Note that we divide by $255$ instead of $256$ because Python starts at $0$ instead of $1$.  We must now split this dataset into a training set, validation set, and testing set. The training set will be used to train the model, the validation set is used to see how well the model has generalized at each epoch, and the testing set is used at the end to see how well the fully trained model can predict on a new dataset. While not everyone uses a validation set, it is good to have since it tells us how well our model is generalizing after each epoch. This will tell us at a glance whether or not our model is overfitting as it learns more.  # Train/validation split X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.1, random_state=42) X_train, X_test, y_train, y_test = train_test_split(X_train, y_train, test_size=0.1, random_state=42)   The function train_test_split() only splits data into two sets so we pass in the data twice to get all three datasets. The overall split is going to be $80\%$ training set, $10\%$ validation set, and $10\%$ testing set. We initialize the random_state so that the results are reproducible.  We also have to convert to PyTorch tensors and reshape the $X$ datasets so that the CNN can accept the data. The input expected for CNNs are $(N, C, H, W)$ where $N$ is batch size (number of images in a batch), $C$ is number of channels (for grayscale this is $1$), $H$ is the height of the image and $W$ the width. Our reshape will put the data into this format. This looks like so:  # # Convert to PyTorch tensors X_train = tc.tensor(X_train).view(-1, 1, 28, 28) y_train = tc.tensor(y_train.values) X_val = tc.tensor(X_val).view(-1, 1, 28, 28) y_val = tc.tensor(y_val.values) X_test = tc.tensor(X_test).view(-1, 1, 28, 28) y_test = tc.tensor(y_test.values)  # # DataLoaders train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=64, shuffle=True) val_loader = DataLoader(TensorDataset(X_val, y_val), batch_size=64) test_loader = DataLoader(TensorDataset(X_test, y_test), batch_size=64)   The last step above is to set up the data loaders. First, TensorDataset() is a function that pairs the features $X$ with the labels $y$ in a tuple. The function DataLoader() then provides an iterator that iterates over minibatches of the dataset with the batch size, in this case, being $64$. We also shuffle the training data so that the model doesn’t learn the ordering and can generalize better.  Now that we have taken care of the dataset, let’s move on to the actual CNN:  class SimpleCNN(nn.Module):     def __init__(self):         super().__init__()         self.conv = nn.Sequential(             nn.Conv2d(1, 32, 3, padding=1),             nn.ReLU(),             nn.MaxPool2d(2),             nn.Conv2d(32, 64, 3, padding=1),             nn.ReLU(),             nn.MaxPool2d(2)         )         self.fc = nn.Sequential(             nn.Flatten(),             nn.Linear(64*7*7, 128),             nn.ReLU(),             nn.Linear(128, 10)         )     def forward(self, x):         x = self.conv(x)         return self.fc(x)   Let’s unpack the class. First, we pass in nn.Module as an argument into the class and write super().__init__() in the constructor. This is called inheritance and ensures that all the functions normally available in the parent class nn.Module are also available in the child class, which is our define_CNN() class. In the constructor you will see nn.Sequential(), which is a container module that lets you build neural networks by stacking layers and activation functions sequentially. This container module is used in two different places, to define the CNN self.conv and the multi-layer perception (MLP) self.fc. The reason we define both a CNN and a MLP is because the CNN’s sole focus is to learn the features, while the MLP is supposed to take those features and map them to a final output (category). In this case, the CNN is known as the backbone and the MLP as the neck.  You may ask, “Why separate them?” Here are some reasons why we may want to build a model with a separate backbone and head:    Modularity:            You can change the convolutional part without touching the fully connected layers, or vice versa.       Example: Add more convolutional layers, or replace self.fc with a different classifier.           Conceptual clarity:            self.conv –&gt; extract patterns       self.fc –&gt; decide which class based on patterns           Industry standard:            Most CNNs follow this “feature extractor + classifier” design, which makes it easier to swap backbones or use pretrained models.           Let’s look at the model and break down each layer:  The convolutional neural network:     nn.Conv2d(1, 32, 3, padding=1)            This is a two-dimensional convolutional layer with $1$ input channel, $32$ output channels (learning $32$ features), and a convolutional kernel size of $3$. Finally, we zero pad with size $1$ to keep the spatial size of the image the same as the input since the function defaults to stride=$1$.           nn.ReLU()            This is a Rectified Linear Unit activation function. It is defined as $\text{ReLU}(x) = \text{max}(0, x)$. Essentially, it zeros out the negative values while introducing non-linearity. This type of activation function is simple and fast to use compared to others such as $\text{tanh}(x)$ or sigmoid.           nn.MaxPool2d(2)            This is a two-dimensional max pooling layer meant to reduce spatial dimensions while keeping important information. In this case, $2$ denotes that a $2 \times 2$ kernel is used. The max pooling layer will then take a $2 \times 2$ window and slide it over the feature map, taking the maximum value within the window and assigning it to the corresponding location in the output.           nn.Conv2d(32, 64, 3, padding=1)            This convolutional layer now has $32$ input channels, $64$ output channels, meaning it is meant to learn more finer details than the previous one since the outputs channels have now increased.           nn.ReLU()            Same as before.           nn.MaxPool2d(2)            Same as before.           The multi-layer perceptron:    nn.Flatten()            This is used to flatten the input tensor. The output of the CNN is a four-dimensional tensor. Since the input to the MLP is the output of the CNN, the tensor has to be flatten.           nn.Linear(64*7*7, 128)            This is a fully connected linear layer with input size $64*7*7$ (output of CNN) and output size of $128$ neurons.           nn.ReLU()            Same as before.           nn.Linear(128, 10)            This is another fully connected linear layer, but now the input size is $128$ and the output size is $10$, which matches how many categories we have ($0$-$9$).           The last part of the class is the function forward() that calls the CNN, then passes the output of the CNN to the MLP so that the features can be mapped to a category.  Now, let’s see how the model is trained. First, we need to initialize the CNN, the optimizer, and the loss function:  cnn = SimpleCNN() optimizer = optim.AdamW(cnn.parameters(), lr=0.001) loss_fn = nn.CrossEntropyLoss()   In this case, we will use the optimizer optim.AdamW() with an initial learning rate of $0.001$. This optimizer is a popular choice since it takes the fast convergence of Adam (another optimizer) and the generalization properties of SGD (optimizer we used last week) with weight decay. For more information on this optimizer see here. The loss function we will be using is cross-entropy loss. This loss function measures the difference between two probability distributions and is widely used for classification problems. For more information on this loss function see here.  The training will look like the following:  for epoch in range(3):     cnn.train()     correct, total = 0, 0     # Trains over the training set     for X, y in train_loader:         optimizer.zero_grad()         output = cnn(X)         loss = loss_fn(output, y)         loss.backward()         optimizer.step()                  preds = tc.softmax(output, dim=0).argmax(1)         correct += (preds == y).sum().item()         total += y.size(0)     train_acc = correct / total          # Evaluates over the validation set     cnn.eval() # put model in evaluation mode     correct, total = 0, 0     with tc.no_grad(): # no gradient tracking during evaluation         for X, y in val_loader:             output = cnn(X) # forward pass             preds = tc.softmax(output, dim=0).argmax(1)             correct += (preds == y).sum().item()             total += y.size(0)     val_acc = correct / total      print(f&quot;Epoch {epoch + 1},              Train Accuracy: {train_acc:.8f},              Validation Accuracy: {val_acc:.8f}&quot;)   I won’t go over all the details since some of this code is present in last week’s post, so I will only go over the new additions. In the training portion, we now implement tc.softmax() on the outputs, which converts the output prediction to probabilities that overall sum to $1$. The method .argmax(1) finds the index of the maximum value of each row. In essence, we are picking out the prediction that has the highest probability of matching up to the true target. The next line calculates how many of our predictions are actually correct, while the line after find the total number of targets that the model is supposed to predict. With these values, we can calculate a percentage of correct predictions (given by train_acc).  Like I previously mentioned, we use a validation set to determine how well our model generalizes between epochs. The next part of the loop does exactly this. We first put the model in evaluation mode using .eval(). While in evalulation mode, the weights of the model are not changed with the new data and processes like dropout are deactivated. The rest of the loop is identical to the training portion, which is just calculating the percentage of correct predictions (given by val_acc) with the validation set. After both calculation, we print out the current epoch and the accuracies. The model is trained and the validation set accuracy computed for a total of three epochs. Once done training, our model is now full trained and ready to go.  The next step is to see how the fully trained model generalizes with unseen data. We will use the same method of calculating the validation accuracy with the test data since the point is to see how well the model generalizes to unknown data. An example of what the print statement output looks like is the following:  Epoch 1, Train Accuracy: 0.88814815, Validation Accuracy: 0.94385714 Epoch 2, Train Accuracy: 0.95839506, Validation Accuracy: 0.96385714 Epoch 3, Train Accuracy: 0.97007055, Validation Accuracy: 0.96928571 Test Accuracy: 0.97190476   These numbers will change when the training is reran since we are not seeding the random numbers in PyTorch.  We have now fully trained a model composed of a CNN for feature learning and a MLP for learning the mapping between the data and the targets. We also included an evaluation over a validation set to check how well the model is generalizing to unknown data as it is being trained, and an evaluation over a test set to check how well the full trained model performs on unseen data. Overall, the model seems to be very accurate with a test accuracy of $\approx 97 \%$. That being said, there is still $\approx 3 \%$ of the test data that is not being categorized correctly. Let’s see a subset of these predictions to try to understand what is going on.  misclassified_images = [] misclassified_preds = [] true_labels = []  cnn.eval() with tc.no_grad():     for X, y in test_loader:         output = cnn(X)         preds = tc.softmax(output, dim=0).argmax(1)         mismatches = preds != y                  if mismatches.any():             misclassified_images.extend(X[mismatches].cpu())             misclassified_preds.extend(preds[mismatches].cpu())             true_labels.extend(y[mismatches].cpu())   Evaluating the misclassified images is similar to the evaluation block explained before. One of the differences is that we add mismatches = preds != y, which saves all the predictions that do not match up to the ground truth. We also include an if-statement that checks for any mismatches and, if found, saves the image, prediction, and ground truth. The method .cpu() moves the tensor from the GPU to the CPU. In this case, we don’t need to put it since we are training exclusively on the CPU, but it’s something to keep in mind. Plotting the misclassified images, we get the following:    From the image above, we can begin to understand why the model is misclassifying some numbers. The number in the upper left is supposed to be a $7$, but it was written in such a way that it can potentially be confused with a $9$. The number in the upper right is supposed to be an $8$, but it really looks like a $9$. The number $2$ in the bottom row does look like a $2$, but it’s understandable that the model may confuse it with an $8$ since the upper and lower loops look like what someone would do to write an $8$. With the subset of misclassified images we have plotted, it makes sense that the model may struggle with these cases, especially since we only trained it using a small CNN and three total epochs.  Overall, the model does a great job at correctly classifying the MNIST dataset, minus some small subset where the confusion can be attributed to messy numbers. As we saw, training a basic image recognition model is not difficult! Of course, these models are not perfect or fool-proof and with more complex images, we may need more layers, larger layers, or maybe more advanced machine learning techniques.  Feel free to reach out if you have any questions about what we covered this week. Next time, I will show you how to modularize and make improvements to the code. Stay tuned!  ⬅ Back to Home">
+
+
+
+
+
+
+
+  <meta property="article:published_time" content="2025-09-07T00:00:00-07:00">
+
+
+
+
+
+
+<link rel="canonical" href="https://ajg91.github.io//posts/machine-learning/convolutional-neural-network-with-mnist-dataset/">
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- end _includes/seo.html -->
+
+
+
+  <link href="/feed.xml" type="application/atom+xml" rel="alternate" title="AJG's Homepage Feed">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+  
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css"></noscript>
+
+
+
+    <script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$','$$'], ['\\[','\\]']]
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
+  </head>
+
+  <body class="layout--single" dir="ltr">
+    <nav class="skip-links">
+  <ul>
+    <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
+    <li><a href="#main" class="screen-reader-shortcut">Skip to content</a></li>
+    <li><a href="#footer" class="screen-reader-shortcut">Skip to footer</a></li>
+  </ul>
+</nav>
+
+    
+
+<div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        
+        <a class="site-title" href="/">
+          AJG&#39;s Homepage
+          
+        </a>
+        <ul class="visible-links"><li class="masthead__menu-item">
+              <a
+                href="/posts/"
+                
+                
+              >Posts</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/publications/"
+                
+                
+              >Publications</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/talks/"
+                
+                
+              >Talks</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/software/"
+                
+                
+              >Software</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/contact/"
+                
+                
+              >Contact Me</a>
+            </li></ul>
+        
+        <button class="greedy-nav__toggle hidden" type="button">
+          <span class="visually-hidden">Toggle menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+
+    <div class="initial-content">
+      
+
+
+
+
+  
+    
+
+
+
+<nav class="breadcrumbs">
+  <ol itemscope itemtype="https://schema.org/BreadcrumbList">
+    
+    
+    
+      
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/" itemprop="item"><span itemprop="name">Home</span></a>
+
+          <meta itemprop="position" content="1" />
+        </li>
+        <span class="sep">/</span>
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/posts" itemprop="item"><span itemprop="name">Posts</span></a>
+          <meta itemprop="position" content="2" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/machine-learning" itemprop="item"><span itemprop="name">Machine learning</span></a>
+          <meta itemprop="position" content="3" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        <li class="current">Convolutional neural networks: MNIST dataset</li>
+      
+    
+  </ol>
+</nav>
+
+  
+
+
+<div id="main" role="main">
+  
+
+
+  <article class="page" itemscope itemtype="https://schema.org/CreativeWork">
+    <meta itemprop="headline" content="Convolutional neural networks: MNIST dataset">
+    <meta itemprop="description" content="September 07, 2025Today we will learn about convolutional neural networks (CNNs). A CNN is a neural network designed to process grid-like data, such as images. It works by applying a convolution, filters (usually small $n \times n$ matrices) that slide over the data to extract useful features, across the 2D grid to detect features such as edges and shapes. We can apply these neural networks to images so that the network can learn how to classify images. In this post, we will construct a CNN and apply it to preprocessed images known as the MNIST dataset.What is MNIST?MNIST stands for Modified National Institute of Standards and Technology, which is the institute that first created this dataset. The dataset is composed of thousands of grayscale images of handwritten numbers from $0$ to $9$ (ten categories). It is a very popular dataset used when one is first learning about CNNs since it is simple and easy to understand. The documentation for the function that we will be using to load the MNIST dataset can be found here. Here is a plot of a small subset of the dataset:Let’s jump into creating the model.First, we must import the data. I used the MNIST dataset provided by Scikit-learn:from sklearn.datasets import fetch_openmlmnist = fetch_openml(&#39;mnist_784&#39;, version=1)X = mnist.data.values.astype(&#39;float32&#39;) / 255.0y = mnist.target.astype(&#39;int64&#39;)The $255$ is used to normalize the dataset between $0$ and $1$. This comes from the fact that a single byte ($8$ bits) can store $2^8=256$ different values. For images, this means there are $256$ different shades per each color channel. Note that we divide by $255$ instead of $256$ because Python starts at $0$ instead of $1$.We must now split this dataset into a training set, validation set, and testing set. The training set will be used to train the model, the validation set is used to see how well the model has generalized at each epoch, and the testing set is used at the end to see how well the fully trained model can predict on a new dataset. While not everyone uses a validation set, it is good to have since it tells us how well our model is generalizing after each epoch. This will tell us at a glance whether or not our model is overfitting as it learns more.# Train/validation splitX_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.1, random_state=42)X_train, X_test, y_train, y_test = train_test_split(X_train, y_train, test_size=0.1, random_state=42)The function train_test_split() only splits data into two sets so we pass in the data twice to get all three datasets. The overall split is going to be $80\%$ training set, $10\%$ validation set, and $10\%$ testing set. We initialize the random_state so that the results are reproducible.We also have to convert to PyTorch tensors and reshape the $X$ datasets so that the CNN can accept the data. The input expected for CNNs are $(N, C, H, W)$ where $N$ is batch size (number of images in a batch), $C$ is number of channels (for grayscale this is $1$), $H$ is the height of the image and $W$ the width. Our reshape will put the data into this format. This looks like so:# # Convert to PyTorch tensorsX_train = tc.tensor(X_train).view(-1, 1, 28, 28)y_train = tc.tensor(y_train.values)X_val = tc.tensor(X_val).view(-1, 1, 28, 28)y_val = tc.tensor(y_val.values)X_test = tc.tensor(X_test).view(-1, 1, 28, 28)y_test = tc.tensor(y_test.values)# # DataLoaderstrain_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=64, shuffle=True)val_loader = DataLoader(TensorDataset(X_val, y_val), batch_size=64)test_loader = DataLoader(TensorDataset(X_test, y_test), batch_size=64)The last step above is to set up the data loaders. First, TensorDataset() is a function that pairs the features $X$ with the labels $y$ in a tuple. The function DataLoader() then provides an iterator that iterates over minibatches of the dataset with the batch size, in this case, being $64$. We also shuffle the training data so that the model doesn’t learn the ordering and can generalize better.Now that we have taken care of the dataset, let’s move on to the actual CNN:class SimpleCNN(nn.Module):    def __init__(self):        super().__init__()        self.conv = nn.Sequential(            nn.Conv2d(1, 32, 3, padding=1),            nn.ReLU(),            nn.MaxPool2d(2),            nn.Conv2d(32, 64, 3, padding=1),            nn.ReLU(),            nn.MaxPool2d(2)        )        self.fc = nn.Sequential(            nn.Flatten(),            nn.Linear(64*7*7, 128),            nn.ReLU(),            nn.Linear(128, 10)        )    def forward(self, x):        x = self.conv(x)        return self.fc(x)Let’s unpack the class. First, we pass in nn.Module as an argument into the class and write super().__init__() in the constructor. This is called inheritance and ensures that all the functions normally available in the parent class nn.Module are also available in the child class, which is our define_CNN() class. In the constructor you will see nn.Sequential(), which is a container module that lets you build neural networks by stacking layers and activation functions sequentially. This container module is used in two different places, to define the CNN self.conv and the multi-layer perception (MLP) self.fc. The reason we define both a CNN and a MLP is because the CNN’s sole focus is to learn the features, while the MLP is supposed to take those features and map them to a final output (category). In this case, the CNN is known as the backbone and the MLP as the neck.You may ask, “Why separate them?” Here are some reasons why we may want to build a model with a separate backbone and head:  Modularity:          You can change the convolutional part without touching the fully connected layers, or vice versa.      Example: Add more convolutional layers, or replace self.fc with a different classifier.        Conceptual clarity:          self.conv –&gt; extract patterns      self.fc –&gt; decide which class based on patterns        Industry standard:          Most CNNs follow this “feature extractor + classifier” design, which makes it easier to swap backbones or use pretrained models.      Let’s look at the model and break down each layer:The convolutional neural network:   nn.Conv2d(1, 32, 3, padding=1)          This is a two-dimensional convolutional layer with $1$ input channel, $32$ output channels (learning $32$ features), and a convolutional kernel size of $3$. Finally, we zero pad with size $1$ to keep the spatial size of the image the same as the input since the function defaults to stride=$1$.        nn.ReLU()          This is a Rectified Linear Unit activation function. It is defined as $\text{ReLU}(x) = \text{max}(0, x)$. Essentially, it zeros out the negative values while introducing non-linearity. This type of activation function is simple and fast to use compared to others such as $\text{tanh}(x)$ or sigmoid.        nn.MaxPool2d(2)          This is a two-dimensional max pooling layer meant to reduce spatial dimensions while keeping important information. In this case, $2$ denotes that a $2 \times 2$ kernel is used. The max pooling layer will then take a $2 \times 2$ window and slide it over the feature map, taking the maximum value within the window and assigning it to the corresponding location in the output.        nn.Conv2d(32, 64, 3, padding=1)          This convolutional layer now has $32$ input channels, $64$ output channels, meaning it is meant to learn more finer details than the previous one since the outputs channels have now increased.        nn.ReLU()          Same as before.        nn.MaxPool2d(2)          Same as before.      The multi-layer perceptron:  nn.Flatten()          This is used to flatten the input tensor. The output of the CNN is a four-dimensional tensor. Since the input to the MLP is the output of the CNN, the tensor has to be flatten.        nn.Linear(64*7*7, 128)          This is a fully connected linear layer with input size $64*7*7$ (output of CNN) and output size of $128$ neurons.        nn.ReLU()          Same as before.        nn.Linear(128, 10)          This is another fully connected linear layer, but now the input size is $128$ and the output size is $10$, which matches how many categories we have ($0$-$9$).      The last part of the class is the function forward() that calls the CNN, then passes the output of the CNN to the MLP so that the features can be mapped to a category.Now, let’s see how the model is trained. First, we need to initialize the CNN, the optimizer, and the loss function:cnn = SimpleCNN()optimizer = optim.AdamW(cnn.parameters(), lr=0.001)loss_fn = nn.CrossEntropyLoss()In this case, we will use the optimizer optim.AdamW() with an initial learning rate of $0.001$. This optimizer is a popular choice since it takes the fast convergence of Adam (another optimizer) and the generalization properties of SGD (optimizer we used last week) with weight decay. For more information on this optimizer see here. The loss function we will be using is cross-entropy loss. This loss function measures the difference between two probability distributions and is widely used for classification problems. For more information on this loss function see here.The training will look like the following:for epoch in range(3):    cnn.train()    correct, total = 0, 0    # Trains over the training set    for X, y in train_loader:        optimizer.zero_grad()        output = cnn(X)        loss = loss_fn(output, y)        loss.backward()        optimizer.step()                preds = tc.softmax(output, dim=0).argmax(1)        correct += (preds == y).sum().item()        total += y.size(0)    train_acc = correct / total        # Evaluates over the validation set    cnn.eval() # put model in evaluation mode    correct, total = 0, 0    with tc.no_grad(): # no gradient tracking during evaluation        for X, y in val_loader:            output = cnn(X) # forward pass            preds = tc.softmax(output, dim=0).argmax(1)            correct += (preds == y).sum().item()            total += y.size(0)    val_acc = correct / total    print(f&quot;Epoch {epoch + 1},             Train Accuracy: {train_acc:.8f},             Validation Accuracy: {val_acc:.8f}&quot;)I won’t go over all the details since some of this code is present in last week’s post, so I will only go over the new additions. In the training portion, we now implement tc.softmax() on the outputs, which converts the output prediction to probabilities that overall sum to $1$. The method .argmax(1) finds the index of the maximum value of each row. In essence, we are picking out the prediction that has the highest probability of matching up to the true target. The next line calculates how many of our predictions are actually correct, while the line after find the total number of targets that the model is supposed to predict. With these values, we can calculate a percentage of correct predictions (given by train_acc).Like I previously mentioned, we use a validation set to determine how well our model generalizes between epochs. The next part of the loop does exactly this. We first put the model in evaluation mode using .eval(). While in evalulation mode, the weights of the model are not changed with the new data and processes like dropout are deactivated. The rest of the loop is identical to the training portion, which is just calculating the percentage of correct predictions (given by val_acc) with the validation set. After both calculation, we print out the current epoch and the accuracies. The model is trained and the validation set accuracy computed for a total of three epochs. Once done training, our model is now full trained and ready to go.The next step is to see how the fully trained model generalizes with unseen data. We will use the same method of calculating the validation accuracy with the test data since the point is to see how well the model generalizes to unknown data. An example of what the print statement output looks like is the following:Epoch 1, Train Accuracy: 0.88814815, Validation Accuracy: 0.94385714Epoch 2, Train Accuracy: 0.95839506, Validation Accuracy: 0.96385714Epoch 3, Train Accuracy: 0.97007055, Validation Accuracy: 0.96928571Test Accuracy: 0.97190476These numbers will change when the training is reran since we are not seeding the random numbers in PyTorch.We have now fully trained a model composed of a CNN for feature learning and a MLP for learning the mapping between the data and the targets. We also included an evaluation over a validation set to check how well the model is generalizing to unknown data as it is being trained, and an evaluation over a test set to check how well the full trained model performs on unseen data. Overall, the model seems to be very accurate with a test accuracy of $\approx 97 \%$. That being said, there is still $\approx 3 \%$ of the test data that is not being categorized correctly. Let’s see a subset of these predictions to try to understand what is going on.misclassified_images = []misclassified_preds = []true_labels = []cnn.eval()with tc.no_grad():    for X, y in test_loader:        output = cnn(X)        preds = tc.softmax(output, dim=0).argmax(1)        mismatches = preds != y                if mismatches.any():            misclassified_images.extend(X[mismatches].cpu())            misclassified_preds.extend(preds[mismatches].cpu())            true_labels.extend(y[mismatches].cpu())Evaluating the misclassified images is similar to the evaluation block explained before. One of the differences is that we add mismatches = preds != y, which saves all the predictions that do not match up to the ground truth. We also include an if-statement that checks for any mismatches and, if found, saves the image, prediction, and ground truth. The method .cpu() moves the tensor from the GPU to the CPU. In this case, we don’t need to put it since we are training exclusively on the CPU, but it’s something to keep in mind. Plotting the misclassified images, we get the following:From the image above, we can begin to understand why the model is misclassifying some numbers. The number in the upper left is supposed to be a $7$, but it was written in such a way that it can potentially be confused with a $9$. The number in the upper right is supposed to be an $8$, but it really looks like a $9$. The number $2$ in the bottom row does look like a $2$, but it’s understandable that the model may confuse it with an $8$ since the upper and lower loops look like what someone would do to write an $8$. With the subset of misclassified images we have plotted, it makes sense that the model may struggle with these cases, especially since we only trained it using a small CNN and three total epochs.Overall, the model does a great job at correctly classifying the MNIST dataset, minus some small subset where the confusion can be attributed to messy numbers. As we saw, training a basic image recognition model is not difficult! Of course, these models are not perfect or fool-proof and with more complex images, we may need more layers, larger layers, or maybe more advanced machine learning techniques.Feel free to reach out if you have any questions about what we covered this week. Next time, I will show you how to modularize and make improvements to the code. Stay tuned!⬅ Back to Home">
+    <meta itemprop="datePublished" content="2025-09-07T00:00:00-07:00">
+    
+
+    <div class="page__inner-wrap">
+      
+        <header>
+          <h1 id="page-title" class="page__title" itemprop="headline">
+            <a href="https://ajg91.github.io//posts/machine-learning/convolutional-neural-network-with-mnist-dataset/" itemprop="url">Convolutional neural networks: MNIST dataset
+</a>
+          </h1>
+          
+
+
+        </header>
+      
+
+      <section class="page__content" itemprop="text">
+        
+        <p class="post-date">September 07, 2025</p>
+
+<p>Today we will learn about convolutional neural networks (CNNs). A CNN is a neural network designed to process grid-like data, such as images. It works by applying a convolution, filters (usually small $n \times n$ matrices) that slide over the data to extract useful features, across the 2D grid to detect features such as edges and shapes. We can apply these neural networks to images so that the network can learn how to classify images. In this post, we will construct a CNN and apply it to preprocessed images known as the MNIST dataset.</p>
+
+<p>What is MNIST?<br />
+MNIST stands for Modified National Institute of Standards and Technology, which is the institute that first created this dataset. The dataset is composed of thousands of grayscale images of handwritten numbers from $0$ to $9$ (ten categories). It is a very popular dataset used when one is first learning about CNNs since it is simple and easy to understand. The documentation for the function that we will be using to load the MNIST dataset can be found <a href="https://www.openml.org/search?type=data&amp;sort=runs&amp;id=554&amp;status=active" title="MNIST-docs">here</a>. Here is a plot of a small subset of the dataset:</p>
+
+<p><img src="/assets/images/build_cnn/example_image_mnist.png" alt="mnist_example" /></p>
+
+<p>Let’s jump into creating the model.</p>
+
+<p>First, we must import the data. I used the MNIST dataset provided by Scikit-learn:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="n">sklearn.datasets</span> <span class="kn">import</span> <span class="n">fetch_openml</span>
+
+<span class="n">mnist</span> <span class="o">=</span> <span class="nf">fetch_openml</span><span class="p">(</span><span class="sh">'</span><span class="s">mnist_784</span><span class="sh">'</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">X</span> <span class="o">=</span> <span class="n">mnist</span><span class="p">.</span><span class="n">data</span><span class="p">.</span><span class="n">values</span><span class="p">.</span><span class="nf">astype</span><span class="p">(</span><span class="sh">'</span><span class="s">float32</span><span class="sh">'</span><span class="p">)</span> <span class="o">/</span> <span class="mf">255.0</span>
+<span class="n">y</span> <span class="o">=</span> <span class="n">mnist</span><span class="p">.</span><span class="n">target</span><span class="p">.</span><span class="nf">astype</span><span class="p">(</span><span class="sh">'</span><span class="s">int64</span><span class="sh">'</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>The $255$ is used to normalize the dataset between $0$ and $1$. This comes from the fact that a single byte ($8$ bits) can store $2^8=256$ different values. For images, this means there are $256$ different shades per each color channel. Note that we divide by $255$ instead of $256$ because Python starts at $0$ instead of $1$.</p>
+
+<p>We must now split this dataset into a training set, validation set, and testing set. The training set will be used to train the model, the validation set is used to see how well the model has generalized at each epoch, and the testing set is used at the end to see how well the fully trained model can predict on a new dataset. While not everyone uses a validation set, it is good to have since it tells us how well our model is generalizing after each epoch. This will tell us at a glance whether or not our model is overfitting as it learns more.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Train/validation split
+</span><span class="n">X_train</span><span class="p">,</span> <span class="n">X_val</span><span class="p">,</span> <span class="n">y_train</span><span class="p">,</span> <span class="n">y_val</span> <span class="o">=</span> <span class="nf">train_test_split</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">test_size</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+<span class="n">X_train</span><span class="p">,</span> <span class="n">X_test</span><span class="p">,</span> <span class="n">y_train</span><span class="p">,</span> <span class="n">y_test</span> <span class="o">=</span> <span class="nf">train_test_split</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">,</span> <span class="n">test_size</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>The function <code class="language-plaintext highlighter-rouge">train_test_split()</code> only splits data into two sets so we pass in the data twice to get all three datasets. The overall split is going to be $80\%$ training set, $10\%$ validation set, and $10\%$ testing set. We initialize the random_state so that the results are reproducible.</p>
+
+<p>We also have to convert to PyTorch tensors and reshape the $X$ datasets so that the CNN can accept the data. The input expected for CNNs are $(N, C, H, W)$ where $N$ is batch size (number of images in a batch), $C$ is number of channels (for grayscale this is $1$), $H$ is the height of the image and $W$ the width. Our reshape will put the data into this format. This looks like so:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># # Convert to PyTorch tensors
+</span><span class="n">X_train</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">tensor</span><span class="p">(</span><span class="n">X_train</span><span class="p">).</span><span class="nf">view</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">28</span><span class="p">,</span> <span class="mi">28</span><span class="p">)</span>
+<span class="n">y_train</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">tensor</span><span class="p">(</span><span class="n">y_train</span><span class="p">.</span><span class="n">values</span><span class="p">)</span>
+<span class="n">X_val</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">tensor</span><span class="p">(</span><span class="n">X_val</span><span class="p">).</span><span class="nf">view</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">28</span><span class="p">,</span> <span class="mi">28</span><span class="p">)</span>
+<span class="n">y_val</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">tensor</span><span class="p">(</span><span class="n">y_val</span><span class="p">.</span><span class="n">values</span><span class="p">)</span>
+<span class="n">X_test</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">tensor</span><span class="p">(</span><span class="n">X_test</span><span class="p">).</span><span class="nf">view</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">28</span><span class="p">,</span> <span class="mi">28</span><span class="p">)</span>
+<span class="n">y_test</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">tensor</span><span class="p">(</span><span class="n">y_test</span><span class="p">.</span><span class="n">values</span><span class="p">)</span>
+
+<span class="c1"># # DataLoaders
+</span><span class="n">train_loader</span> <span class="o">=</span> <span class="nc">DataLoader</span><span class="p">(</span><span class="nc">TensorDataset</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">),</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="n">val_loader</span> <span class="o">=</span> <span class="nc">DataLoader</span><span class="p">(</span><span class="nc">TensorDataset</span><span class="p">(</span><span class="n">X_val</span><span class="p">,</span> <span class="n">y_val</span><span class="p">),</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">64</span><span class="p">)</span>
+<span class="n">test_loader</span> <span class="o">=</span> <span class="nc">DataLoader</span><span class="p">(</span><span class="nc">TensorDataset</span><span class="p">(</span><span class="n">X_test</span><span class="p">,</span> <span class="n">y_test</span><span class="p">),</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">64</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>The last step above is to set up the data loaders. First, <code class="language-plaintext highlighter-rouge">TensorDataset()</code> is a function that pairs the features $X$ with the labels $y$ in a tuple. The function <code class="language-plaintext highlighter-rouge">DataLoader()</code> then provides an iterator that iterates over minibatches of the dataset with the batch size, in this case, being $64$. We also shuffle the training data so that the model doesn’t learn the ordering and can generalize better.</p>
+
+<p>Now that we have taken care of the dataset, let’s move on to the actual CNN:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">SimpleCNN</span><span class="p">(</span><span class="n">nn</span><span class="p">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="n">self</span><span class="p">):</span>
+        <span class="nf">super</span><span class="p">().</span><span class="nf">__init__</span><span class="p">()</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">conv</span> <span class="o">=</span> <span class="n">nn</span><span class="p">.</span><span class="nc">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">Conv2d</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">MaxPool2d</span><span class="p">(</span><span class="mi">2</span><span class="p">),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">Conv2d</span><span class="p">(</span><span class="mi">32</span><span class="p">,</span> <span class="mi">64</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">MaxPool2d</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">fc</span> <span class="o">=</span> <span class="n">nn</span><span class="p">.</span><span class="nc">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">Flatten</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">Linear</span><span class="p">(</span><span class="mi">64</span><span class="o">*</span><span class="mi">7</span><span class="o">*</span><span class="mi">7</span><span class="p">,</span> <span class="mi">128</span><span class="p">),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">Linear</span><span class="p">(</span><span class="mi">128</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">conv</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">self</span><span class="p">.</span><span class="nf">fc</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Let’s unpack the class. First, we pass in <code class="language-plaintext highlighter-rouge">nn.Module</code> as an argument into the class and write <code class="language-plaintext highlighter-rouge">super().__init__()</code> in the constructor. This is called inheritance and ensures that all the functions normally available in the parent class <code class="language-plaintext highlighter-rouge">nn.Module</code> are also available in the child class, which is our <code class="language-plaintext highlighter-rouge">define_CNN()</code> class. In the constructor you will see <code class="language-plaintext highlighter-rouge">nn.Sequential()</code>, which is a container module that lets you build neural networks by stacking layers and activation functions sequentially. This container module is used in two different places, to define the CNN <code class="language-plaintext highlighter-rouge">self.conv</code> and the multi-layer perception (MLP) <code class="language-plaintext highlighter-rouge">self.fc</code>. The reason we define both a CNN and a MLP is because the CNN’s sole focus is to learn the features, while the MLP is supposed to take those features and map them to a final output (category). In this case, the CNN is known as the backbone and the MLP as the neck.</p>
+
+<p>You may ask, “Why separate them?” Here are some reasons why we may want to build a model with a separate backbone and head:<br /></p>
+<ol>
+  <li>Modularity:<br />
+    <ul>
+      <li>You can change the convolutional part without touching the fully connected layers, or vice versa.<br /></li>
+      <li>Example: Add more convolutional layers, or replace <code class="language-plaintext highlighter-rouge">self.fc</code> with a different classifier.</li>
+    </ul>
+  </li>
+  <li>Conceptual clarity:<br />
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">self.conv</code> –&gt; extract patterns<br /></li>
+      <li><code class="language-plaintext highlighter-rouge">self.fc</code> –&gt; decide which class based on patterns<br /></li>
+    </ul>
+  </li>
+  <li>Industry standard:<br />
+    <ul>
+      <li>Most CNNs follow this “feature extractor + classifier” design, which makes it easier to swap backbones or use pretrained models.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>Let’s look at the model and break down each layer:</p>
+
+<p>The convolutional neural network: <br /></p>
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">nn.Conv2d(1, 32, 3, padding=1)</code><br />
+    <ul>
+      <li>This is a two-dimensional convolutional layer with $1$ input channel, $32$ output channels (learning $32$ features), and a convolutional kernel size of $3$. Finally, we zero pad with size $1$ to keep the spatial size of the image the same as the input since the function defaults to stride=$1$.<br /></li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">nn.ReLU()</code><br />
+    <ul>
+      <li>This is a Rectified Linear Unit activation function. It is defined as $\text{ReLU}(x) = \text{max}(0, x)$. Essentially, it zeros out the negative values while introducing non-linearity. This type of activation function is simple and fast to use compared to others such as $\text{tanh}(x)$ or sigmoid.<br /></li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">nn.MaxPool2d(2)</code><br />
+    <ul>
+      <li>This is a two-dimensional max pooling layer meant to reduce spatial dimensions while keeping important information. In this case, $2$ denotes that a $2 \times 2$ kernel is used. The max pooling layer will then take a $2 \times 2$ window and slide it over the feature map, taking the maximum value within the window and assigning it to the corresponding location in the output.</li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">nn.Conv2d(32, 64, 3, padding=1)</code><br />
+    <ul>
+      <li>This convolutional layer now has $32$ input channels, $64$ output channels, meaning it is meant to learn more finer details than the previous one since the outputs channels have now increased.<br /></li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">nn.ReLU()</code><br />
+    <ul>
+      <li>Same as before.<br /></li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">nn.MaxPool2d(2)</code><br />
+    <ul>
+      <li>Same as before.<br /></li>
+    </ul>
+  </li>
+</ol>
+
+<p>The multi-layer perceptron:<br /></p>
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">nn.Flatten()</code><br />
+    <ul>
+      <li>This is used to flatten the input tensor. The output of the CNN is a four-dimensional tensor. Since the input to the MLP is the output of the CNN, the tensor has to be flatten.<br /></li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">nn.Linear(64*7*7, 128)</code><br />
+    <ul>
+      <li>This is a fully connected linear layer with input size $64*7*7$ (output of CNN) and output size of $128$ neurons.<br /></li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">nn.ReLU()</code><br />
+    <ul>
+      <li>Same as before.<br /></li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">nn.Linear(128, 10)</code><br />
+    <ul>
+      <li>This is another fully connected linear layer, but now the input size is $128$ and the output size is $10$, which matches how many categories we have ($0$-$9$).<br /></li>
+    </ul>
+  </li>
+</ol>
+
+<p>The last part of the class is the function <code class="language-plaintext highlighter-rouge">forward()</code> that calls the CNN, then passes the output of the CNN to the MLP so that the features can be mapped to a category.</p>
+
+<p>Now, let’s see how the model is trained. First, we need to initialize the CNN, the optimizer, and the loss function:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">cnn</span> <span class="o">=</span> <span class="nc">SimpleCNN</span><span class="p">()</span>
+<span class="n">optimizer</span> <span class="o">=</span> <span class="n">optim</span><span class="p">.</span><span class="nc">AdamW</span><span class="p">(</span><span class="n">cnn</span><span class="p">.</span><span class="nf">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="mf">0.001</span><span class="p">)</span>
+<span class="n">loss_fn</span> <span class="o">=</span> <span class="n">nn</span><span class="p">.</span><span class="nc">CrossEntropyLoss</span><span class="p">()</span>
+</code></pre></div></div>
+
+<p>In this case, we will use the optimizer <code class="language-plaintext highlighter-rouge">optim.AdamW()</code> with an initial learning rate of $0.001$. This optimizer is a popular choice since it takes the fast convergence of Adam (another optimizer) and the generalization properties of SGD (optimizer we used last week) with weight decay. For more information on this optimizer see <a href="https://docs.pytorch.org/docs/stable/generated/torch.optim.AdamW.html" title="AdamW-docs">here</a>. The loss function we will be using is cross-entropy loss. This loss function measures the difference between two probability distributions and is widely used for classification problems. For more information on this loss function see <a href="https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html" title="Cross-entropy-docs">here</a>.</p>
+
+<p>The training will look like the following:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+    <span class="n">cnn</span><span class="p">.</span><span class="nf">train</span><span class="p">()</span>
+    <span class="n">correct</span><span class="p">,</span> <span class="n">total</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
+    <span class="c1"># Trains over the training set
+</span>    <span class="k">for</span> <span class="n">X</span><span class="p">,</span> <span class="n">y</span> <span class="ow">in</span> <span class="n">train_loader</span><span class="p">:</span>
+        <span class="n">optimizer</span><span class="p">.</span><span class="nf">zero_grad</span><span class="p">()</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="nf">cnn</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+        <span class="n">loss</span> <span class="o">=</span> <span class="nf">loss_fn</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+        <span class="n">loss</span><span class="p">.</span><span class="nf">backward</span><span class="p">()</span>
+        <span class="n">optimizer</span><span class="p">.</span><span class="nf">step</span><span class="p">()</span>
+        
+        <span class="n">preds</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">softmax</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">).</span><span class="nf">argmax</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">correct</span> <span class="o">+=</span> <span class="p">(</span><span class="n">preds</span> <span class="o">==</span> <span class="n">y</span><span class="p">).</span><span class="nf">sum</span><span class="p">().</span><span class="nf">item</span><span class="p">()</span>
+        <span class="n">total</span> <span class="o">+=</span> <span class="n">y</span><span class="p">.</span><span class="nf">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">train_acc</span> <span class="o">=</span> <span class="n">correct</span> <span class="o">/</span> <span class="n">total</span>
+    
+    <span class="c1"># Evaluates over the validation set
+</span>    <span class="n">cnn</span><span class="p">.</span><span class="nf">eval</span><span class="p">()</span> <span class="c1"># put model in evaluation mode
+</span>    <span class="n">correct</span><span class="p">,</span> <span class="n">total</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
+    <span class="k">with</span> <span class="n">tc</span><span class="p">.</span><span class="nf">no_grad</span><span class="p">():</span> <span class="c1"># no gradient tracking during evaluation
+</span>        <span class="k">for</span> <span class="n">X</span><span class="p">,</span> <span class="n">y</span> <span class="ow">in</span> <span class="n">val_loader</span><span class="p">:</span>
+            <span class="n">output</span> <span class="o">=</span> <span class="nf">cnn</span><span class="p">(</span><span class="n">X</span><span class="p">)</span> <span class="c1"># forward pass
+</span>            <span class="n">preds</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">softmax</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">).</span><span class="nf">argmax</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">correct</span> <span class="o">+=</span> <span class="p">(</span><span class="n">preds</span> <span class="o">==</span> <span class="n">y</span><span class="p">).</span><span class="nf">sum</span><span class="p">().</span><span class="nf">item</span><span class="p">()</span>
+            <span class="n">total</span> <span class="o">+=</span> <span class="n">y</span><span class="p">.</span><span class="nf">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">val_acc</span> <span class="o">=</span> <span class="n">correct</span> <span class="o">/</span> <span class="n">total</span>
+
+    <span class="nf">print</span><span class="p">(</span><span class="sa">f</span><span class="sh">"</span><span class="s">Epoch </span><span class="si">{</span><span class="n">epoch</span> <span class="o">+</span> <span class="mi">1</span><span class="si">}</span><span class="s">, 
+            Train Accuracy: </span><span class="si">{</span><span class="n">train_acc</span><span class="si">:</span><span class="p">.</span><span class="mi">8</span><span class="n">f</span><span class="si">}</span><span class="s">, 
+            Validation Accuracy: </span><span class="si">{</span><span class="n">val_acc</span><span class="si">:</span><span class="p">.</span><span class="mi">8</span><span class="n">f</span><span class="si">}</span><span class="sh">"</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>I won’t go over all the details since some of this code is present in last week’s post, so I will only go over the new additions. In the training portion, we now implement <code class="language-plaintext highlighter-rouge">tc.softmax()</code> on the outputs, which converts the output prediction to probabilities that overall sum to $1$. The method <code class="language-plaintext highlighter-rouge">.argmax(1)</code> finds the index of the maximum value of each row. In essence, we are picking out the prediction that has the highest probability of matching up to the true target. The next line calculates how many of our predictions are actually correct, while the line after find the total number of targets that the model is supposed to predict. With these values, we can calculate a percentage of correct predictions (given by train_acc).</p>
+
+<p>Like I previously mentioned, we use a validation set to determine how well our model generalizes between epochs. The next part of the loop does exactly this. We first put the model in evaluation mode using <code class="language-plaintext highlighter-rouge">.eval()</code>. While in evalulation mode, the weights of the model are not changed with the new data and processes like dropout are deactivated. The rest of the loop is identical to the training portion, which is just calculating the percentage of correct predictions (given by val_acc) with the validation set. After both calculation, we print out the current epoch and the accuracies. The model is trained and the validation set accuracy computed for a total of three epochs. Once done training, our model is now full trained and ready to go.</p>
+
+<p>The next step is to see how the fully trained model generalizes with unseen data. We will use the same method of calculating the validation accuracy with the test data since the point is to see how well the model generalizes to unknown data. An example of what the print statement output looks like is the following:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Epoch</span> <span class="mi">1</span><span class="p">,</span> <span class="n">Train</span> <span class="n">Accuracy</span><span class="p">:</span> <span class="mf">0.88814815</span><span class="p">,</span> <span class="n">Validation</span> <span class="n">Accuracy</span><span class="p">:</span> <span class="mf">0.94385714</span>
+<span class="n">Epoch</span> <span class="mi">2</span><span class="p">,</span> <span class="n">Train</span> <span class="n">Accuracy</span><span class="p">:</span> <span class="mf">0.95839506</span><span class="p">,</span> <span class="n">Validation</span> <span class="n">Accuracy</span><span class="p">:</span> <span class="mf">0.96385714</span>
+<span class="n">Epoch</span> <span class="mi">3</span><span class="p">,</span> <span class="n">Train</span> <span class="n">Accuracy</span><span class="p">:</span> <span class="mf">0.97007055</span><span class="p">,</span> <span class="n">Validation</span> <span class="n">Accuracy</span><span class="p">:</span> <span class="mf">0.96928571</span>
+<span class="n">Test</span> <span class="n">Accuracy</span><span class="p">:</span> <span class="mf">0.97190476</span>
+</code></pre></div></div>
+
+<p>These numbers will change when the training is reran since we are not seeding the random numbers in PyTorch.</p>
+
+<p>We have now fully trained a model composed of a CNN for feature learning and a MLP for learning the mapping between the data and the targets. We also included an evaluation over a validation set to check how well the model is generalizing to unknown data as it is being trained, and an evaluation over a test set to check how well the full trained model performs on unseen data. Overall, the model seems to be very accurate with a test accuracy of $\approx 97 \%$. That being said, there is still $\approx 3 \%$ of the test data that is not being categorized correctly. Let’s see a subset of these predictions to try to understand what is going on.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">misclassified_images</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="n">misclassified_preds</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="n">true_labels</span> <span class="o">=</span> <span class="p">[]</span>
+
+<span class="n">cnn</span><span class="p">.</span><span class="nf">eval</span><span class="p">()</span>
+<span class="k">with</span> <span class="n">tc</span><span class="p">.</span><span class="nf">no_grad</span><span class="p">():</span>
+    <span class="k">for</span> <span class="n">X</span><span class="p">,</span> <span class="n">y</span> <span class="ow">in</span> <span class="n">test_loader</span><span class="p">:</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="nf">cnn</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+        <span class="n">preds</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">softmax</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">).</span><span class="nf">argmax</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">mismatches</span> <span class="o">=</span> <span class="n">preds</span> <span class="o">!=</span> <span class="n">y</span>
+        
+        <span class="k">if</span> <span class="n">mismatches</span><span class="p">.</span><span class="nf">any</span><span class="p">():</span>
+            <span class="n">misclassified_images</span><span class="p">.</span><span class="nf">extend</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="n">mismatches</span><span class="p">].</span><span class="nf">cpu</span><span class="p">())</span>
+            <span class="n">misclassified_preds</span><span class="p">.</span><span class="nf">extend</span><span class="p">(</span><span class="n">preds</span><span class="p">[</span><span class="n">mismatches</span><span class="p">].</span><span class="nf">cpu</span><span class="p">())</span>
+            <span class="n">true_labels</span><span class="p">.</span><span class="nf">extend</span><span class="p">(</span><span class="n">y</span><span class="p">[</span><span class="n">mismatches</span><span class="p">].</span><span class="nf">cpu</span><span class="p">())</span>
+</code></pre></div></div>
+
+<p>Evaluating the misclassified images is similar to the evaluation block explained before. One of the differences is that we add <code class="language-plaintext highlighter-rouge">mismatches = preds != y</code>, which saves all the predictions that do not match up to the ground truth. We also include an if-statement that checks for any mismatches and, if found, saves the image, prediction, and ground truth. The method <code class="language-plaintext highlighter-rouge">.cpu()</code> moves the tensor from the GPU to the CPU. In this case, we don’t need to put it since we are training exclusively on the CPU, but it’s something to keep in mind. Plotting the misclassified images, we get the following:</p>
+
+<p><img src="/assets/images/build_cnn/misclassified_images_mnist.png" alt="mnist_misclassified" /></p>
+
+<p>From the image above, we can begin to understand why the model is misclassifying some numbers. The number in the upper left is supposed to be a $7$, but it was written in such a way that it can potentially be confused with a $9$. The number in the upper right is supposed to be an $8$, but it really looks like a $9$. The number $2$ in the bottom row does look like a $2$, but it’s understandable that the model may confuse it with an $8$ since the upper and lower loops look like what someone would do to write an $8$. With the subset of misclassified images we have plotted, it makes sense that the model may struggle with these cases, especially since we only trained it using a small CNN and three total epochs.</p>
+
+<p>Overall, the model does a great job at correctly classifying the MNIST dataset, minus some small subset where the confusion can be attributed to messy numbers. As we saw, training a basic image recognition model is not difficult! Of course, these models are not perfect or fool-proof and with more complex images, we may need more layers, larger layers, or maybe more advanced machine learning techniques.</p>
+
+<p>Feel free to reach out if you have any questions about what we covered this week. Next time, I will show you how to modularize and make improvements to the code. Stay tuned!</p>
+
+<p><a href="/" class="btn">⬅ Back to Home</a></p>
+
+        
+      </section>
+
+      <footer class="page__meta">
+        
+        
+
+
+        
+
+  <p class="page__date"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Updated:</strong> <time class="dt-published" datetime="2025-09-07T00:00:00-07:00">September 7, 2025</time></p>
+
+      </footer>
+
+      
+
+      
+  <nav class="pagination">
+    
+      <a href="/posts/machine-learning/linear-regression-with-pytorch/" class="pagination--pager" title="Linear regression: Applying PyTorch to projectile motion example">Previous</a>
+    
+    
+      <a href="/posts/machine-learning/convolutional-neural-network-with-mnist-pipeline/" class="pagination--pager" title="Convolutional neural networks: MNIST dataset with machine learning pipeline">Next</a>
+    
+  </nav>
+
+
+    </div>
+
+    
+  </article>
+
+  
+  
+</div>
+
+      
+    </div>
+
+    
+
+    <div id="footer" class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        
+
+<div class="page__footer-follow">
+  <ul class="social-icons">
+    
+
+    
+
+    
+      <li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+    
+  </ul>
+</div>
+
+
+<div class="page__footer-copyright">&copy; 2026 <a href="https://ajg91.github.io/">AJG&#39;s Homepage</a>. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/jekyll-themes/minimal-mistakes/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+
+  </body>
+</html>

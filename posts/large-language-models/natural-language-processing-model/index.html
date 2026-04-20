@@ -1,0 +1,357 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.27.3 by Michael Rose
+  Copyright 2013-2025 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE
+-->
+
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin _includes/seo.html --><title>Natural language models: An introduction to human-computer language interaction - AJG’s Homepage</title>
+<meta name="description" content="November 02, 2025  This week we will be discussed natural language models (NLPs) and how they process text. NLP models are an interface for computers to understand, interpret, and generate human language. They achieve this by representing words, phrases, and sentences as vectors (also known as word embeddings), and training on large amounts of these vectors (a.k.a. large amounts of text) to learn their underlying patterns and relationships. These vectors capture the different meanings that a word can have and are used to relate words. Similar words, such as “cat” and “dog” will be close to each other in the vector space, while words like “car” and “kitchen” will be further apart. In summary, these vectors tell the models how all the words in a sentence relate to each other [4].  The process of producing these vectors is important to understand. Let’s consider the phrase “I love dogs.” for simplicity. As discussed in the previous paragraph, a computer understands 1’s and 0’s, not text. So we must figure out how to convert this text to numbers. First, we must tokenize the text. This means breaking the phrase up into single units. In our example, this would be broken up into the following:  “I love dogs.” -&gt; [“I”, “love”, “ dogs”, “.”]  Notice that the spaces are not perserved and the punctuation is independent. Depending on the tokenizer, spaces may or may not be perserved. Each individual entry in the list will then be converted to a number called token IDs. These IDs are then converted into vectors using an embedding matrix. This is essentially a predefined lookup table that tells the model what vector corresponds to each token. All models have this built into them and can be found by doing something like model.embeddings.word_embeddings.  One may think, “I get that there is a table where one can see what vector corresponds to each token, but doesn’t context matter?” Yes! Context is important when building one of these models. A word being at the beginning of a phrase may have a completely different meaning when found towards the end of the phrase. Multiple things come into play. There is the concept of attention, which means that one word gets to see all other words in the sentence so that long-range relationships can be captured. The advantage to this is that the full context of a sentence can be understood, and this process can be parallelized so that all tokens are processed simultaneously. Additionally, positional embeddings also come into play. Once the vector from the lookup table is found, positional information is added to these vectors. This is to tell the model where in the phrase that specific token was at. So the word at position 0 in one phrase and at position 5 in a different phrase will get slightly different vectors. It is these vectors that are then used to fine-tune the model. An example of this is the following sentence:  “The dog chases the cat.”  If positional embeddings are not implemented, the model will not know the positions of the words since the tokens are processed in parallel so an identical sentence would be:  “The cat chases the dog.”  The meaning of the sentence has now been lost.  As a note, one token does not always correspond to one word. For a work like “running”, this would be split up into “run” and “ning”, hence becoming two tokens.  Once trained, the tasks that can be performed by NLP models range from (but not limited to):     Translations   Summarizing information   Identifying sentiment   Generating text (e.g. telling a story)   Some examples of popular NLP models that you may have heard of before Large Language Models (LLMs) such as ChatGPT from OpenAI and Gemini from Google. These models are both encoders and decoders. Encoders are used for understanding text. This is useful when you talk about identifying sentiment, classification, and recognition. On the other hand, decoders are used for text generation, such as summarization and speech-to-text conversion. Fundamentally, the difference between both is that encoders are bidirectional, which means that token $T_n$ is influenced by tokens $T_{n-1}$ and $T_{n+1}$, while decoders are autoreggresive, which means that token $T_n$ is influenced solely by tokens $T &lt; T_{n}$. They can also work hand-in-hand when considering tasks such as translations and summarization because first the model has to understand the full text, then it has to generate the new text.  The process of working with NLPs primarily revolve around fine-tuning instead of training from scratch. The reason is that these models are pre-trained with huge amounts of general language data so that the model understands how to output language. This type of training is computationally expensive and may not be achieveable on a personal laptop. Instead, we can take a model that has already been trained on a huge amount of data and tweak it to fit our problem. This is the fine-tuning process. Fine-tuning takes a labeled dataset and a loss function, and uses them to tweak the weights in the model towards the problem you are trying to solve. Another question that may arise is: “why would we tweak the model weights instead of just fine-tuning the classifier?” This is because tweaking the model weights allows for the pretrained model to adapt to the new domain for better accuracy. If one were to just fine-tune the classifier, the model itself may not produce accurate results for the specific task. In other words, you are orienting the model to what you need it to do.  For this set of posts, we will be working with two different models: an encoder and a decoder. For the encoder, we will be performing sentiment classification using DistilBERT (Distilled BERT), which is available on the Hugging Face website [4,4]. This pre-trained encoder comes from a bigger model known as BERT (Bidirectional Encoder Representations from Transformers). Compared to BERT, DistilBERT is about $56$% of the size and $60$% faster, but only retains $97$% of the performance, hence it is a compressed version of BERT. Overall, it is a great choice for a small project since it’s lightweight, fast, and accurate. Since this model is already pre-trained using large datasets, our job is to fine-tune it to the specific problem we are considering.  For the decoder, we will be performing text generator using GPT-2 (Generative Pretrained Transformer 2). This pre-trained decoder is a transformer-based neural network that has been trained on a massive amount of text found on the internet. It’s purpose is to generate the next word in a sentence in a coherent and contextual way. This model was developed by OpenAI in 2019 and a smaller version (~124M parameters) was made available on the Hugging Face website [4]. Like the encoder, this model is already pre-trained using large datasets, so our job would be to fine-tune it to the specific problem we are considering.  We have now gone over what natural language models and how they process text. We have also discussed encoders versus decoders and where they are useful. We finished off by introducing the model we will use and the concept of fine-tuning. Overall, NLPs are important to the foundation of LLMs since they supply the methods and frameworks that make human-computer language interaction possible.  Feel free to reach out if you have any questions about what we covered this week. We will show a concrete coding example where we showcase how to fine-tune these models. Stay tuned!  [1] Vinija Jain &amp; Aman Chadha, Word Vectors, Distilled AI, 2021.  [2] Victor Sanh, Lysandre Debut, Julien Chaumond, &amp; Thomas Wolf, DistilBERT, a distilled version of BERT: smaller, faster, cheaper and lighter, arXiv preprint arXiv:1910.01108, 2019.  [3] Thomas Wolf, Lysandre Debut, Victor Sanh, et al., HuggingFace’s Transformers: State-of-the-art Natural Language Processing, arXiv preprint arXiv:1910.03771, 2019.  [4] Alec Radford, Jeffrey Wu, Rewon Child, et al., Language models are unsupervised multitask learners, OpenAI blog, 2019.  ⬅ Back to Home">
+
+
+
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="AJG&#39;s Homepage">
+<meta property="og:title" content="Natural language models: An introduction to human-computer language interaction">
+<meta property="og:url" content="https://ajg91.github.io//posts/large-language-models/natural-language-processing-model/">
+
+
+  <meta property="og:description" content="November 02, 2025  This week we will be discussed natural language models (NLPs) and how they process text. NLP models are an interface for computers to understand, interpret, and generate human language. They achieve this by representing words, phrases, and sentences as vectors (also known as word embeddings), and training on large amounts of these vectors (a.k.a. large amounts of text) to learn their underlying patterns and relationships. These vectors capture the different meanings that a word can have and are used to relate words. Similar words, such as “cat” and “dog” will be close to each other in the vector space, while words like “car” and “kitchen” will be further apart. In summary, these vectors tell the models how all the words in a sentence relate to each other [4].  The process of producing these vectors is important to understand. Let’s consider the phrase “I love dogs.” for simplicity. As discussed in the previous paragraph, a computer understands 1’s and 0’s, not text. So we must figure out how to convert this text to numbers. First, we must tokenize the text. This means breaking the phrase up into single units. In our example, this would be broken up into the following:  “I love dogs.” -&gt; [“I”, “love”, “ dogs”, “.”]  Notice that the spaces are not perserved and the punctuation is independent. Depending on the tokenizer, spaces may or may not be perserved. Each individual entry in the list will then be converted to a number called token IDs. These IDs are then converted into vectors using an embedding matrix. This is essentially a predefined lookup table that tells the model what vector corresponds to each token. All models have this built into them and can be found by doing something like model.embeddings.word_embeddings.  One may think, “I get that there is a table where one can see what vector corresponds to each token, but doesn’t context matter?” Yes! Context is important when building one of these models. A word being at the beginning of a phrase may have a completely different meaning when found towards the end of the phrase. Multiple things come into play. There is the concept of attention, which means that one word gets to see all other words in the sentence so that long-range relationships can be captured. The advantage to this is that the full context of a sentence can be understood, and this process can be parallelized so that all tokens are processed simultaneously. Additionally, positional embeddings also come into play. Once the vector from the lookup table is found, positional information is added to these vectors. This is to tell the model where in the phrase that specific token was at. So the word at position 0 in one phrase and at position 5 in a different phrase will get slightly different vectors. It is these vectors that are then used to fine-tune the model. An example of this is the following sentence:  “The dog chases the cat.”  If positional embeddings are not implemented, the model will not know the positions of the words since the tokens are processed in parallel so an identical sentence would be:  “The cat chases the dog.”  The meaning of the sentence has now been lost.  As a note, one token does not always correspond to one word. For a work like “running”, this would be split up into “run” and “ning”, hence becoming two tokens.  Once trained, the tasks that can be performed by NLP models range from (but not limited to):     Translations   Summarizing information   Identifying sentiment   Generating text (e.g. telling a story)   Some examples of popular NLP models that you may have heard of before Large Language Models (LLMs) such as ChatGPT from OpenAI and Gemini from Google. These models are both encoders and decoders. Encoders are used for understanding text. This is useful when you talk about identifying sentiment, classification, and recognition. On the other hand, decoders are used for text generation, such as summarization and speech-to-text conversion. Fundamentally, the difference between both is that encoders are bidirectional, which means that token $T_n$ is influenced by tokens $T_{n-1}$ and $T_{n+1}$, while decoders are autoreggresive, which means that token $T_n$ is influenced solely by tokens $T &lt; T_{n}$. They can also work hand-in-hand when considering tasks such as translations and summarization because first the model has to understand the full text, then it has to generate the new text.  The process of working with NLPs primarily revolve around fine-tuning instead of training from scratch. The reason is that these models are pre-trained with huge amounts of general language data so that the model understands how to output language. This type of training is computationally expensive and may not be achieveable on a personal laptop. Instead, we can take a model that has already been trained on a huge amount of data and tweak it to fit our problem. This is the fine-tuning process. Fine-tuning takes a labeled dataset and a loss function, and uses them to tweak the weights in the model towards the problem you are trying to solve. Another question that may arise is: “why would we tweak the model weights instead of just fine-tuning the classifier?” This is because tweaking the model weights allows for the pretrained model to adapt to the new domain for better accuracy. If one were to just fine-tune the classifier, the model itself may not produce accurate results for the specific task. In other words, you are orienting the model to what you need it to do.  For this set of posts, we will be working with two different models: an encoder and a decoder. For the encoder, we will be performing sentiment classification using DistilBERT (Distilled BERT), which is available on the Hugging Face website [4,4]. This pre-trained encoder comes from a bigger model known as BERT (Bidirectional Encoder Representations from Transformers). Compared to BERT, DistilBERT is about $56$% of the size and $60$% faster, but only retains $97$% of the performance, hence it is a compressed version of BERT. Overall, it is a great choice for a small project since it’s lightweight, fast, and accurate. Since this model is already pre-trained using large datasets, our job is to fine-tune it to the specific problem we are considering.  For the decoder, we will be performing text generator using GPT-2 (Generative Pretrained Transformer 2). This pre-trained decoder is a transformer-based neural network that has been trained on a massive amount of text found on the internet. It’s purpose is to generate the next word in a sentence in a coherent and contextual way. This model was developed by OpenAI in 2019 and a smaller version (~124M parameters) was made available on the Hugging Face website [4]. Like the encoder, this model is already pre-trained using large datasets, so our job would be to fine-tune it to the specific problem we are considering.  We have now gone over what natural language models and how they process text. We have also discussed encoders versus decoders and where they are useful. We finished off by introducing the model we will use and the concept of fine-tuning. Overall, NLPs are important to the foundation of LLMs since they supply the methods and frameworks that make human-computer language interaction possible.  Feel free to reach out if you have any questions about what we covered this week. We will show a concrete coding example where we showcase how to fine-tune these models. Stay tuned!  [1] Vinija Jain &amp; Aman Chadha, Word Vectors, Distilled AI, 2021.  [2] Victor Sanh, Lysandre Debut, Julien Chaumond, &amp; Thomas Wolf, DistilBERT, a distilled version of BERT: smaller, faster, cheaper and lighter, arXiv preprint arXiv:1910.01108, 2019.  [3] Thomas Wolf, Lysandre Debut, Victor Sanh, et al., HuggingFace’s Transformers: State-of-the-art Natural Language Processing, arXiv preprint arXiv:1910.03771, 2019.  [4] Alec Radford, Jeffrey Wu, Rewon Child, et al., Language models are unsupervised multitask learners, OpenAI blog, 2019.  ⬅ Back to Home">
+
+
+
+
+
+
+
+  <meta property="article:published_time" content="2025-11-02T00:00:00-07:00">
+
+
+
+
+
+
+<link rel="canonical" href="https://ajg91.github.io//posts/large-language-models/natural-language-processing-model/">
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- end _includes/seo.html -->
+
+
+
+  <link href="/feed.xml" type="application/atom+xml" rel="alternate" title="AJG's Homepage Feed">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+  
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css"></noscript>
+
+
+
+    <script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$','$$'], ['\\[','\\]']]
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
+  </head>
+
+  <body class="layout--single" dir="ltr">
+    <nav class="skip-links">
+  <ul>
+    <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
+    <li><a href="#main" class="screen-reader-shortcut">Skip to content</a></li>
+    <li><a href="#footer" class="screen-reader-shortcut">Skip to footer</a></li>
+  </ul>
+</nav>
+
+    
+
+<div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        
+        <a class="site-title" href="/">
+          AJG&#39;s Homepage
+          
+        </a>
+        <ul class="visible-links"><li class="masthead__menu-item">
+              <a
+                href="/posts/"
+                
+                
+              >Posts</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/publications/"
+                
+                
+              >Publications</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/talks/"
+                
+                
+              >Talks</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/software/"
+                
+                
+              >Software</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/contact/"
+                
+                
+              >Contact Me</a>
+            </li></ul>
+        
+        <button class="greedy-nav__toggle hidden" type="button">
+          <span class="visually-hidden">Toggle menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+
+    <div class="initial-content">
+      
+
+
+
+
+  
+    
+
+
+
+<nav class="breadcrumbs">
+  <ol itemscope itemtype="https://schema.org/BreadcrumbList">
+    
+    
+    
+      
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/" itemprop="item"><span itemprop="name">Home</span></a>
+
+          <meta itemprop="position" content="1" />
+        </li>
+        <span class="sep">/</span>
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/posts" itemprop="item"><span itemprop="name">Posts</span></a>
+          <meta itemprop="position" content="2" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/large-language-models" itemprop="item"><span itemprop="name">Large language models</span></a>
+          <meta itemprop="position" content="3" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        <li class="current">Natural language models: An introduction to human-computer language interaction</li>
+      
+    
+  </ol>
+</nav>
+
+  
+
+
+<div id="main" role="main">
+  
+
+
+  <article class="page" itemscope itemtype="https://schema.org/CreativeWork">
+    <meta itemprop="headline" content="Natural language models: An introduction to human-computer language interaction">
+    <meta itemprop="description" content="November 02, 2025This week we will be discussed natural language models (NLPs) and how they process text. NLP models are an interface for computers to understand, interpret, and generate human language. They achieve this by representing words, phrases, and sentences as vectors (also known as word embeddings), and training on large amounts of these vectors (a.k.a. large amounts of text) to learn their underlying patterns and relationships. These vectors capture the different meanings that a word can have and are used to relate words. Similar words, such as “cat” and “dog” will be close to each other in the vector space, while words like “car” and “kitchen” will be further apart. In summary, these vectors tell the models how all the words in a sentence relate to each other [4].The process of producing these vectors is important to understand. Let’s consider the phrase “I love dogs.” for simplicity. As discussed in the previous paragraph, a computer understands 1’s and 0’s, not text. So we must figure out how to convert this text to numbers. First, we must tokenize the text. This means breaking the phrase up into single units. In our example, this would be broken up into the following:“I love dogs.” -&gt; [“I”, “love”, “ dogs”, “.”]Notice that the spaces are not perserved and the punctuation is independent. Depending on the tokenizer, spaces may or may not be perserved. Each individual entry in the list will then be converted to a number called token IDs. These IDs are then converted into vectors using an embedding matrix. This is essentially a predefined lookup table that tells the model what vector corresponds to each token. All models have this built into them and can be found by doing something like model.embeddings.word_embeddings.One may think, “I get that there is a table where one can see what vector corresponds to each token, but doesn’t context matter?” Yes! Context is important when building one of these models. A word being at the beginning of a phrase may have a completely different meaning when found towards the end of the phrase. Multiple things come into play. There is the concept of attention, which means that one word gets to see all other words in the sentence so that long-range relationships can be captured. The advantage to this is that the full context of a sentence can be understood, and this process can be parallelized so that all tokens are processed simultaneously. Additionally, positional embeddings also come into play. Once the vector from the lookup table is found, positional information is added to these vectors. This is to tell the model where in the phrase that specific token was at. So the word at position 0 in one phrase and at position 5 in a different phrase will get slightly different vectors. It is these vectors that are then used to fine-tune the model. An example of this is the following sentence:“The dog chases the cat.”If positional embeddings are not implemented, the model will not know the positions of the words since the tokens are processed in parallel so an identical sentence would be:“The cat chases the dog.”The meaning of the sentence has now been lost.As a note, one token does not always correspond to one word. For a work like “running”, this would be split up into “run” and “ning”, hence becoming two tokens.Once trained, the tasks that can be performed by NLP models range from (but not limited to):   Translations  Summarizing information  Identifying sentiment  Generating text (e.g. telling a story)Some examples of popular NLP models that you may have heard of before Large Language Models (LLMs) such as ChatGPT from OpenAI and Gemini from Google. These models are both encoders and decoders. Encoders are used for understanding text. This is useful when you talk about identifying sentiment, classification, and recognition. On the other hand, decoders are used for text generation, such as summarization and speech-to-text conversion. Fundamentally, the difference between both is that encoders are bidirectional, which means that token $T_n$ is influenced by tokens $T_{n-1}$ and $T_{n+1}$, while decoders are autoreggresive, which means that token $T_n$ is influenced solely by tokens $T &lt; T_{n}$. They can also work hand-in-hand when considering tasks such as translations and summarization because first the model has to understand the full text, then it has to generate the new text.The process of working with NLPs primarily revolve around fine-tuning instead of training from scratch. The reason is that these models are pre-trained with huge amounts of general language data so that the model understands how to output language. This type of training is computationally expensive and may not be achieveable on a personal laptop. Instead, we can take a model that has already been trained on a huge amount of data and tweak it to fit our problem. This is the fine-tuning process. Fine-tuning takes a labeled dataset and a loss function, and uses them to tweak the weights in the model towards the problem you are trying to solve. Another question that may arise is: “why would we tweak the model weights instead of just fine-tuning the classifier?” This is because tweaking the model weights allows for the pretrained model to adapt to the new domain for better accuracy. If one were to just fine-tune the classifier, the model itself may not produce accurate results for the specific task. In other words, you are orienting the model to what you need it to do.For this set of posts, we will be working with two different models: an encoder and a decoder. For the encoder, we will be performing sentiment classification using DistilBERT (Distilled BERT), which is available on the Hugging Face website [4,4]. This pre-trained encoder comes from a bigger model known as BERT (Bidirectional Encoder Representations from Transformers). Compared to BERT, DistilBERT is about $56$% of the size and $60$% faster, but only retains $97$% of the performance, hence it is a compressed version of BERT. Overall, it is a great choice for a small project since it’s lightweight, fast, and accurate. Since this model is already pre-trained using large datasets, our job is to fine-tune it to the specific problem we are considering.For the decoder, we will be performing text generator using GPT-2 (Generative Pretrained Transformer 2). This pre-trained decoder is a transformer-based neural network that has been trained on a massive amount of text found on the internet. It’s purpose is to generate the next word in a sentence in a coherent and contextual way. This model was developed by OpenAI in 2019 and a smaller version (~124M parameters) was made available on the Hugging Face website [4]. Like the encoder, this model is already pre-trained using large datasets, so our job would be to fine-tune it to the specific problem we are considering.We have now gone over what natural language models and how they process text. We have also discussed encoders versus decoders and where they are useful. We finished off by introducing the model we will use and the concept of fine-tuning. Overall, NLPs are important to the foundation of LLMs since they supply the methods and frameworks that make human-computer language interaction possible.Feel free to reach out if you have any questions about what we covered this week. We will show a concrete coding example where we showcase how to fine-tune these models. Stay tuned![1] Vinija Jain &amp; Aman Chadha, Word Vectors, Distilled AI, 2021. [2] Victor Sanh, Lysandre Debut, Julien Chaumond, &amp; Thomas Wolf, DistilBERT, a distilled version of BERT: smaller, faster, cheaper and lighter, arXiv preprint arXiv:1910.01108, 2019. [3] Thomas Wolf, Lysandre Debut, Victor Sanh, et al., HuggingFace’s Transformers: State-of-the-art Natural Language Processing, arXiv preprint arXiv:1910.03771, 2019. [4] Alec Radford, Jeffrey Wu, Rewon Child, et al., Language models are unsupervised multitask learners, OpenAI blog, 2019. ⬅ Back to Home">
+    <meta itemprop="datePublished" content="2025-11-02T00:00:00-07:00">
+    
+
+    <div class="page__inner-wrap">
+      
+        <header>
+          <h1 id="page-title" class="page__title" itemprop="headline">
+            <a href="https://ajg91.github.io//posts/large-language-models/natural-language-processing-model/" itemprop="url">Natural language models: An introduction to human-computer language interaction
+</a>
+          </h1>
+          
+
+
+        </header>
+      
+
+      <section class="page__content" itemprop="text">
+        
+        <p class="post-date">November 02, 2025</p>
+
+<p>This week we will be discussed natural language models (NLPs) and how they process text. NLP models are an interface for computers to understand, interpret, and generate human language. They achieve this by representing words, phrases, and sentences as vectors (also known as word embeddings), and training on large amounts of these vectors (a.k.a. large amounts of text) to learn their underlying patterns and relationships. These vectors capture the different meanings that a word can have and are used to relate words. Similar words, such as “cat” and “dog” will be close to each other in the vector space, while words like “car” and “kitchen” will be further apart. In summary, these vectors tell the models how all the words in a sentence relate to each other <a class="citation" href="#Chadha2021DistilledWordVectors">[1]</a>.</p>
+
+<p>The process of producing these vectors is important to understand. Let’s consider the phrase “I love dogs.” for simplicity. As discussed in the previous paragraph, a computer understands 1’s and 0’s, not text. So we must figure out how to convert this text to numbers. First, we must tokenize the text. This means breaking the phrase up into single units. In our example, this would be broken up into the following:</p>
+
+<p>“I love dogs.” -&gt; [“I”, “love”, “ dogs”, “.”]</p>
+
+<p>Notice that the spaces are not perserved and the punctuation is independent. Depending on the tokenizer, spaces may or may not be perserved. Each individual entry in the list will then be converted to a number called token IDs. These IDs are then converted into vectors using an embedding matrix. This is essentially a predefined lookup table that tells the model what vector corresponds to each token. All models have this built into them and can be found by doing something like <code class="language-plaintext highlighter-rouge">model.embeddings.word_embeddings</code>.</p>
+
+<p>One may think, “I get that there is a table where one can see what vector corresponds to each token, but doesn’t context matter?” Yes! Context is important when building one of these models. A word being at the beginning of a phrase may have a completely different meaning when found towards the end of the phrase. Multiple things come into play. There is the concept of attention, which means that one word gets to see all other words in the sentence so that long-range relationships can be captured. The advantage to this is that the full context of a sentence can be understood, and this process can be parallelized so that all tokens are processed simultaneously. Additionally, positional embeddings also come into play. Once the vector from the lookup table is found, positional information is added to these vectors. This is to tell the model where in the phrase that specific token was at. So the word at position 0 in one phrase and at position 5 in a different phrase will get slightly different vectors. It is these vectors that are then used to fine-tune the model. An example of this is the following sentence:</p>
+
+<p>“The dog chases the cat.”</p>
+
+<p>If positional embeddings are not implemented, the model will not know the positions of the words since the tokens are processed in parallel so an identical sentence would be:</p>
+
+<p>“The cat chases the dog.”</p>
+
+<p>The meaning of the sentence has now been lost.</p>
+
+<p>As a note, one token does not always correspond to one word. For a work like “running”, this would be split up into “run” and “ning”, hence becoming two tokens.</p>
+
+<p>Once trained, the tasks that can be performed by NLP models range from (but not limited to): <br /></p>
+<ol>
+  <li>Translations</li>
+  <li>Summarizing information</li>
+  <li>Identifying sentiment</li>
+  <li>Generating text (e.g. telling a story)</li>
+</ol>
+
+<p>Some examples of popular NLP models that you may have heard of before Large Language Models (LLMs) such as <a href="https://openai.com/index/chatgpt/" title="chat-gpt">ChatGPT</a> from OpenAI and <a href="https://gemini.google/about/" title="gemini">Gemini</a> from Google. These models are both encoders and decoders. Encoders are used for understanding text. This is useful when you talk about identifying sentiment, classification, and recognition. On the other hand, decoders are used for text generation, such as summarization and speech-to-text conversion. Fundamentally, the difference between both is that encoders are bidirectional, which means that token $T_n$ is influenced by tokens $T_{n-1}$ and $T_{n+1}$, while decoders are autoreggresive, which means that token $T_n$ is influenced solely by tokens $T &lt; T_{n}$. They can also work hand-in-hand when considering tasks such as translations and summarization because first the model has to understand the full text, then it has to generate the new text.</p>
+
+<p>The process of working with NLPs primarily revolve around fine-tuning instead of training from scratch. The reason is that these models are pre-trained with huge amounts of general language data so that the model understands how to output language. This type of training is computationally expensive and may not be achieveable on a personal laptop. Instead, we can take a model that has already been trained on a huge amount of data and tweak it to fit our problem. This is the fine-tuning process. Fine-tuning takes a labeled dataset and a loss function, and uses them to tweak the weights in the model towards the problem you are trying to solve. Another question that may arise is: “why would we tweak the model weights instead of just fine-tuning the classifier?” This is because tweaking the model weights allows for the pretrained model to adapt to the new domain for better accuracy. If one were to just fine-tune the classifier, the model itself may not produce accurate results for the specific task. In other words, you are orienting the model to what you need it to do.</p>
+
+<p>For this set of posts, we will be working with two different models: an encoder and a decoder. For the encoder, we will be performing sentiment classification using DistilBERT (Distilled BERT), which is available on the Hugging Face <a href="https://huggingface.co/docs/transformers/en/model_doc/distilbert" title="distilbert">website</a> <a class="citation" href="#sanh2019distilbert">[2,3]</a>. This pre-trained encoder comes from a bigger model known as BERT (Bidirectional Encoder Representations from Transformers). Compared to BERT, DistilBERT is about $56$% of the size and $60$% faster, but only retains $97$% of the performance, hence it is a compressed version of BERT. Overall, it is a great choice for a small project since it’s lightweight, fast, and accurate. Since this model is already pre-trained using large datasets, our job is to fine-tune it to the specific problem we are considering.</p>
+
+<p>For the decoder, we will be performing text generator using GPT-2 (Generative Pretrained Transformer 2). This pre-trained decoder is a transformer-based neural network that has been trained on a massive amount of text found on the internet. It’s purpose is to generate the next word in a sentence in a coherent and contextual way. This model was developed by OpenAI in 2019 and a smaller version (~124M parameters) was made available on the Hugging Face <a href="https://huggingface.co/openai-community/gpt2" title="hf-gpt2">website</a> <a class="citation" href="#radford2019language">[4]</a>. Like the encoder, this model is already pre-trained using large datasets, so our job would be to fine-tune it to the specific problem we are considering.</p>
+
+<p>We have now gone over what natural language models and how they process text. We have also discussed encoders versus decoders and where they are useful. We finished off by introducing the model we will use and the concept of fine-tuning. Overall, NLPs are important to the foundation of LLMs since they supply the methods and frameworks that make human-computer language interaction possible.</p>
+
+<p>Feel free to reach out if you have any questions about what we covered this week. We will show a concrete coding example where we showcase how to fine-tune these models. Stay tuned!</p>
+
+<ol class="bibliography"><li><span id="Chadha2021DistilledWordVectors">[1] Vinija Jain &amp; Aman Chadha, <i>Word Vectors</i>, Distilled AI, 2021. </span></li>
+<li><span id="sanh2019distilbert">[2] Victor Sanh, Lysandre Debut, Julien Chaumond, &amp; Thomas Wolf, <i>DistilBERT, a distilled version of BERT: smaller, faster, cheaper and lighter</i>, arXiv preprint arXiv:1910.01108, 2019. </span></li>
+<li><span id="wolf2019huggingface">[3] Thomas Wolf, Lysandre Debut, Victor Sanh, et al., <i>HuggingFace’s Transformers: State-of-the-art Natural Language Processing</i>, arXiv preprint arXiv:1910.03771, 2019. </span></li>
+<li><span id="radford2019language">[4] Alec Radford, Jeffrey Wu, Rewon Child, et al., <i>Language models are unsupervised multitask learners</i>, OpenAI blog, 2019. </span></li></ol>
+<p><a href="/" class="btn">⬅ Back to Home</a></p>
+
+        
+      </section>
+
+      <footer class="page__meta">
+        
+        
+
+
+        
+
+  <p class="page__date"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Updated:</strong> <time class="dt-published" datetime="2025-11-02T00:00:00-07:00">November 2, 2025</time></p>
+
+      </footer>
+
+      
+
+      
+  <nav class="pagination">
+    
+      <a href="/posts/machine-learning/multi-layer-perceptron-hyperparameter-tuning/" class="pagination--pager" title="Multi-layer perceptron: Hyperparameter tuning">Previous</a>
+    
+    
+      <a href="/posts/large-language-models/encoder-distilbert-classifier/" class="pagination--pager" title="Natural language models: DistilBERT sentiment classifier">Next</a>
+    
+  </nav>
+
+
+    </div>
+
+    
+  </article>
+
+  
+  
+</div>
+
+      
+    </div>
+
+    
+
+    <div id="footer" class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        
+
+<div class="page__footer-follow">
+  <ul class="social-icons">
+    
+
+    
+
+    
+      <li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+    
+  </ul>
+</div>
+
+
+<div class="page__footer-copyright">&copy; 2026 <a href="https://ajg91.github.io/">AJG&#39;s Homepage</a>. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/jekyll-themes/minimal-mistakes/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+
+  </body>
+</html>

@@ -1,0 +1,547 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.27.3 by Michael Rose
+  Copyright 2013-2025 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE
+-->
+
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin _includes/seo.html --><title>Natural language models: DistilBERT sentiment classifier - AJG’s Homepage</title>
+<meta name="description" content="November 16, 2025  This week we will be using an encoder to identifying sentiment in movie reviews. First, I will walk through the fine-tuning process. Then, I will show how we use the encoder to identify sentiment with text that the model has not seen.  The classification problem is binary since the sentiment can either be positive or negative. The model we will be fine-tuning, as mentioned in the last post is DistilBERT. Like already discussed, DistilBERT is an encoder that is extracted from a bigger model known as BERT (Bidirectional Encoder Representations from Transformers). Compared to BERT, DistilBERT is about $56$% of the size and $60$% faster, but only retains $97$% of the performance. As is typical with natural language processing (NLP) models, we will be fine-tuning the model weights of an already trained model with a labeled dataset in order to orient the model towards our specific problem. We will use open-source code from Hugging Face, which is a company who has developed libraries for NLP applications and are most known for their transformers library [2].  The first step is defining our parameters. Like previously seen, our parameters will be saved in a .yaml file and we will use SimpleNamespace as an easy way to store and access these parameters. Here are the parameters we will be using:  {   &quot;model_name&quot;: &quot;distilbert-base-uncased&quot;,   &quot;seed&quot;: 42,   &quot;dpi&quot;: 400,   &quot;fig_path&quot;: &quot;../outputs/&quot;,   &quot;res_path&quot;: &quot;../results/&quot; }   As can be see, the model name is distilbert-base-uncased. The next step is to load the dataset, model, and tokenizer. In the Notebook, this is done as follows:  data = &quot;imdb&quot; dataset = load_dataset(data)  inst = ModelAndTokenizer(cfg.model_name) model = inst.load_classification_model() imdb_tokenized = inst.tokenize_dataset(dataset)   Before tokenizing, we much first specify which dataset we are going to be working with. Here, we will be using with the IMDb reviews, which we load using the Hugging Face function load_dataset. We create an instance of our custom class ModelAndTokenizer. This custom class contains methods to used for loading the model, tokenizing the dataset, etc. This class is defined as follows (I will omit the docstrings and unused methods for brevity. See the file model.py for more information):  class ModelAndTokenizer():     def __init__(         self,          model_name: str     ):         self.model_name = model_name         self.device = get_device()         self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(model_name)      def tokenize_text(         self,          prompt: str,          padding: Union[bool, str] = True,          truncation: Union[bool, str] = True     ) -&gt; dict[str, tc.Tensor]:         inputs = self.tokenizer(             prompt,             padding=padding,             truncation=truncation,             return_tensors=&quot;pt&quot;         )         return to_device(inputs, self.device)          def tokenize_dataset(         self,          dataset: Union[Dataset, DatasetDict],          padding: Union[bool, str] = True,          truncation: Union[bool, str] = True     ) -&gt; Union[Dataset, DatasetDict]:         data_tokenized = dataset.map(             lambda x: self.tokenizer(                 x[&quot;text&quot;],                 padding=padding,                 truncation=truncation             ),              batched=True,             remove_columns=[&quot;text&quot;]         )         return data_tokenized      def load_classification_model(         self,          attentions: bool = False     ) -&gt; PreTrainedModel:         model = AutoModelForSequenceClassification.from_pretrained(             self.model_name,             output_attentions=attentions         ).to(self.device)         return model   Starting from the top, we see that the input to the class is the model name, in this case distilbert-base-uncased. The load_classification_model method is how we load the model. For encoders, we will use the Hugging Face class AutoModelForSequenceClassification since we will be classifying text. We use the method from_pretrained() to load a pre-trained model, in this case DistilBERT. This method ensures that we also load the model weights. We also include the option of outputting the attentions. These are weights that inform us which are the tokens in a sequence that are more of an influence to specific tokens in that same sequence when processing the data. One can use this information to understand model behavior, token importance, or any model patterns. We also move the model to whatever device we want to use, such as CPU, GPU, etc.  The next step is to tokenize the dataset, which we do using the method tokenize_dataset. This method maps a function to each element of the dataset using a lambda function. The lambda function is what applies the tokenizer to the datset. In this case, it takes x[&quot;text&quot;], which is raw text strings, and converts them to tokens. Each sequence is padded to be the same length and the texts that are too long are truncated. The dataset is then batched and the initial x[&quot;text&quot;] column is removed (this last step is optional). The output of this method will be a tokenized, batched dataset with labels, input_ids, and attention_mask columns. In our case, the initial dataset was composed of train, test, and unsupervised data with the following structure:  DatasetDict({     train: Dataset({         features: [&#39;text&#39;, &#39;label&#39;],         num_rows: 25000     })     test: Dataset({         features: [&#39;text&#39;, &#39;label&#39;],         num_rows: 25000     })     unsupervised: Dataset({         features: [&#39;text&#39;, &#39;label&#39;],         num_rows: 50000     }) })   Now our tokenized dataset has the following structure:  DatasetDict({     train: Dataset({         features: [&#39;label&#39;, &#39;input_ids&#39;, &#39;attention_mask&#39;],         num_rows: 25000     })     test: Dataset({         features: [&#39;label&#39;, &#39;input_ids&#39;, &#39;attention_mask&#39;],         num_rows: 25000     })     unsupervised: Dataset({         features: [&#39;label&#39;, &#39;input_ids&#39;, &#39;attention_mask&#39;],         num_rows: 50000     }) })   At this point, our dataset is ready to be passed into the encoder.  The next step is to create a training configuration. We do this using the configuration class TrainingArguments where we specify how the model should be trained. In our case we use:  training_args = TrainingArguments(     output_dir=cfg.res_path,     overwrite_output_dir=True,     eval_strategy=&quot;epoch&quot;,     save_strategy=&quot;epoch&quot;,     logging_strategy=&quot;epoch&quot;,     learning_rate=2e-5,     per_device_train_batch_size=8,     num_train_epochs=3,     load_best_model_at_end=True, )   The first line shows that the output directory where we output the trained model to is res_path, which is defined in our parameters yaml file. The next line specifies that the existing file in the directory will be overwritten by this model. The evaluation will be done every epoch, the checkpoints will be saved every epoch, and metrics logging will be done for every epoch, as well. The learning rate is initialized at $2 \times 10^{-5}$ and the batch size is chosen to be $8$. Overall, the training will be done over three epochs, and once training is done the best model will be loaded. WHile there are many more arguments that can be customized, I only show the basics. I refer you to the Hugging Face documentation for an exhaustive list of the available parameters.  Once our training configuration is complete, we need to set up the training wrapper using Trainer. The Trainer class is a high-level training API provided by Hugging Face that automates the training process. Before, we had to write the training loop, which involved telling PyTorch to calculate the loss function, zero the gradients, propagate the loss, and step the optimizer. Trainer takes care of all the heavy lifting for us under the hood. We initialize the Trainer class as follows:  trainer = Trainer(     model=model,     args=training_args,     train_dataset=imdb_tokenized[&quot;train&quot;].shuffle(seed=42).select(range(2000)),     eval_dataset=imdb_tokenized[&quot;test&quot;].shuffle(seed=42).select(range(1000)),     processing_class=inst.tokenizer,     compute_metrics=compute_metrics )   As can be seen, we pass in the model, the training arguments, the different datasets, the tokenizer, and what metrics we want to use (in our case F1 score and accuracy). These datasets are huge so we shuffe, seed, and select a subset of the train ($2000$ samples) and test ($1000$ samples) set as a demonstration. In actual fine-tuning, it’s essential to use all the available data. Now, all we have to do is run trainer.train() and the model begins to train.  For our example, we get the following metrics:  Epoch 	Training Loss   Validation Loss    Accuracy        F1   1 	   0.430200 	    0.303589 	   0.879000 	0.878852   2 	   0.196300 	    0.402086 	   0.884000 	0.883926   3 	   0.115300 	    0.430588 	   0.893000 	0.893013   Overall the metrics look good. The training loss is decreasing per epoch, which is what we are looking for. It also seems exponential, which is a good sign of healthy training. An increasing accuracy over epochs indicates that the model is classifying more examples correctly. The F1 score is also increasing and mirrors the accuracy. This implies that the dataset is balanced and there is no class bias occuring. While the validation loss does increase with each epoch meaning that the model is becoming overconfident and making more incorrect predictions as it trains, the increasing accuracy indicates that the model is still generalizing well. Steps can be taken to mitigate this issue such as early stopping, dropout, and reducing the learning rate.  Once trained, we check to see how well the model classifies the test data by viewing the metrics and plotting a confusion matrix:  {   &quot;test_loss&quot;: 0.32669803500175476,   &quot;test_accuracy&quot;: 0.8633333333333333,   &quot;test_f1 score&quot;: 0.8630762209036968 }     The test metrics are slightly lower, but in the same range as the train metrics, which is a good sign. Plotting a confusion matrix is nice to understand how the predictions are distributed. In this case, the confusion matrix shows that the model is mostly correct in its predictions as the metrics already showed. Our model is now ready to go!  Remember that we are solving a binary classifier problem where sentiment can either be positive or negative so let’s test it on random reviews I generated:  reviews = [     &quot;That movie was absolutely fantastic!&quot;,     &quot;I will never watch this again!&quot;,     &quot;Highly recommend to never watch again.&quot;,     &quot;Fantastic movie&quot;,     &quot;I kept wondering when it would be over.&quot;,     &quot;You couldn&#39;t pay me to watch it again.&quot; ]   Judging from the reviews, we can conclude that the first and fourth reviews are positive sentiment, while the rest are negative. Let’s see what the model thinks. First, we tokenize the reviews. Then, we put the model in eval mode, get the outputs, and convert to probabilities:  inputs = inst.tokenize_text(reviews)  model.eval() with tc.no_grad():     outputs = model(**inputs)      probs = tc.softmax(outputs.logits.to(&quot;cpu&quot;), dim=-1) predicted_classes = tc.argmax(probs, dim=-1) labels = [&quot;negative&quot;, &quot;positive&quot;]   The results are the following:  Text: &#39;That movie was absolutely fantastic!&#39; Probabilities: tensor([0.0520, 0.9480]) Predicted sentiment: positive (0.95 confidence)  Text: &#39;I will never watch this again!&#39; Probabilities: tensor([0.7030, 0.2970]) Predicted sentiment: negative (0.70 confidence)  Text: &#39;Highly recommend to never watch again.&#39; Probabilities: tensor([0.5231, 0.4769]) Predicted sentiment: negative (0.52 confidence)  Text: &#39;Fantastic movie.&#39; Probabilities: tensor([0.1731, 0.8269]) Predicted sentiment: positive (0.83 confidence)  Text: &#39;I kept wondering when it would be over.&#39; Probabilities: tensor([0.6879, 0.3121]) Predicted sentiment: negative (0.69 confidence)  Text: &#39;You couldn&#39;t pay me to watch it again.&#39; Probabilities: tensor([0.8785, 0.1215]) Predicted sentiment: negative (0.88 confidence)   Overall, the model performed well on the reviews. The model managed to correctly predict the sentiment for all the reviews. The first review was very clear in what it was trying to say, hence the high confidence in the positive sentiment classification. The same could be said about the last view when it comes to high confidence in negative sentiment classification.  The third review was borderline, but that’s because of the phrasing. It’s kind of tricky so the model may have a hard time classifying it. In fact, if we run the fine-tuning on different seeds, the third review constantly flips between negative and positive with the probabilities being borderline as they are now. It’s possible that edge cases like this are present in the dataset, which could explain some of the misclassified reviews in the off-diagonal portions of the confusion matrix plot. I would surmise that if we fine-tuned the model with the full training dataset, instead of just a subset, we may have been able to lower the values in the off-diagonal. Regardless, the values are small compared to the diagonal, so the subset chosen is good enough for our application.  We have managed to fine-tune a DistilBERT model to predict sentiment in movie reviews. To summarize, we have walked through the process of fine-tuning an encoder to perform a specific task, which was classify movie reviews. The process involved importing the pre-trained language model, tokenizing the dataset, setting up the training arguments and the Trainer class, fine-tuning the model, then seeing how well the model performs with unseen data. We then made up reviews, with one curveball in the mix, and the model managed to correctly classify them. Overall, we have now learned about encoders, how to fine-tune one for a specific task, and produced a model that performed well on a binary classification problem.  The code and confusion matrix plot presented in this post can be found on my Github under the nlp-model repo [2]. Feel free to reach out if you have any questions about what we covered this week. Next week we will move on to decoders. Stay tuned!  [1] Thomas Wolf, Lysandre Debut, Victor Sanh, et al., HuggingFace’s Transformers: State-of-the-art Natural Language Processing, 2020. Available at: https://arxiv.org/abs/1910.03771. [2] Alberto J. Garcia, NLP Model, 2025. Available at: https://github.com/AJG91/nlp-model. ⬅ Back to Home">
+
+
+
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="AJG&#39;s Homepage">
+<meta property="og:title" content="Natural language models: DistilBERT sentiment classifier">
+<meta property="og:url" content="https://ajg91.github.io//posts/large-language-models/encoder-distilbert-classifier/">
+
+
+  <meta property="og:description" content="November 16, 2025  This week we will be using an encoder to identifying sentiment in movie reviews. First, I will walk through the fine-tuning process. Then, I will show how we use the encoder to identify sentiment with text that the model has not seen.  The classification problem is binary since the sentiment can either be positive or negative. The model we will be fine-tuning, as mentioned in the last post is DistilBERT. Like already discussed, DistilBERT is an encoder that is extracted from a bigger model known as BERT (Bidirectional Encoder Representations from Transformers). Compared to BERT, DistilBERT is about $56$% of the size and $60$% faster, but only retains $97$% of the performance. As is typical with natural language processing (NLP) models, we will be fine-tuning the model weights of an already trained model with a labeled dataset in order to orient the model towards our specific problem. We will use open-source code from Hugging Face, which is a company who has developed libraries for NLP applications and are most known for their transformers library [2].  The first step is defining our parameters. Like previously seen, our parameters will be saved in a .yaml file and we will use SimpleNamespace as an easy way to store and access these parameters. Here are the parameters we will be using:  {   &quot;model_name&quot;: &quot;distilbert-base-uncased&quot;,   &quot;seed&quot;: 42,   &quot;dpi&quot;: 400,   &quot;fig_path&quot;: &quot;../outputs/&quot;,   &quot;res_path&quot;: &quot;../results/&quot; }   As can be see, the model name is distilbert-base-uncased. The next step is to load the dataset, model, and tokenizer. In the Notebook, this is done as follows:  data = &quot;imdb&quot; dataset = load_dataset(data)  inst = ModelAndTokenizer(cfg.model_name) model = inst.load_classification_model() imdb_tokenized = inst.tokenize_dataset(dataset)   Before tokenizing, we much first specify which dataset we are going to be working with. Here, we will be using with the IMDb reviews, which we load using the Hugging Face function load_dataset. We create an instance of our custom class ModelAndTokenizer. This custom class contains methods to used for loading the model, tokenizing the dataset, etc. This class is defined as follows (I will omit the docstrings and unused methods for brevity. See the file model.py for more information):  class ModelAndTokenizer():     def __init__(         self,          model_name: str     ):         self.model_name = model_name         self.device = get_device()         self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(model_name)      def tokenize_text(         self,          prompt: str,          padding: Union[bool, str] = True,          truncation: Union[bool, str] = True     ) -&gt; dict[str, tc.Tensor]:         inputs = self.tokenizer(             prompt,             padding=padding,             truncation=truncation,             return_tensors=&quot;pt&quot;         )         return to_device(inputs, self.device)          def tokenize_dataset(         self,          dataset: Union[Dataset, DatasetDict],          padding: Union[bool, str] = True,          truncation: Union[bool, str] = True     ) -&gt; Union[Dataset, DatasetDict]:         data_tokenized = dataset.map(             lambda x: self.tokenizer(                 x[&quot;text&quot;],                 padding=padding,                 truncation=truncation             ),              batched=True,             remove_columns=[&quot;text&quot;]         )         return data_tokenized      def load_classification_model(         self,          attentions: bool = False     ) -&gt; PreTrainedModel:         model = AutoModelForSequenceClassification.from_pretrained(             self.model_name,             output_attentions=attentions         ).to(self.device)         return model   Starting from the top, we see that the input to the class is the model name, in this case distilbert-base-uncased. The load_classification_model method is how we load the model. For encoders, we will use the Hugging Face class AutoModelForSequenceClassification since we will be classifying text. We use the method from_pretrained() to load a pre-trained model, in this case DistilBERT. This method ensures that we also load the model weights. We also include the option of outputting the attentions. These are weights that inform us which are the tokens in a sequence that are more of an influence to specific tokens in that same sequence when processing the data. One can use this information to understand model behavior, token importance, or any model patterns. We also move the model to whatever device we want to use, such as CPU, GPU, etc.  The next step is to tokenize the dataset, which we do using the method tokenize_dataset. This method maps a function to each element of the dataset using a lambda function. The lambda function is what applies the tokenizer to the datset. In this case, it takes x[&quot;text&quot;], which is raw text strings, and converts them to tokens. Each sequence is padded to be the same length and the texts that are too long are truncated. The dataset is then batched and the initial x[&quot;text&quot;] column is removed (this last step is optional). The output of this method will be a tokenized, batched dataset with labels, input_ids, and attention_mask columns. In our case, the initial dataset was composed of train, test, and unsupervised data with the following structure:  DatasetDict({     train: Dataset({         features: [&#39;text&#39;, &#39;label&#39;],         num_rows: 25000     })     test: Dataset({         features: [&#39;text&#39;, &#39;label&#39;],         num_rows: 25000     })     unsupervised: Dataset({         features: [&#39;text&#39;, &#39;label&#39;],         num_rows: 50000     }) })   Now our tokenized dataset has the following structure:  DatasetDict({     train: Dataset({         features: [&#39;label&#39;, &#39;input_ids&#39;, &#39;attention_mask&#39;],         num_rows: 25000     })     test: Dataset({         features: [&#39;label&#39;, &#39;input_ids&#39;, &#39;attention_mask&#39;],         num_rows: 25000     })     unsupervised: Dataset({         features: [&#39;label&#39;, &#39;input_ids&#39;, &#39;attention_mask&#39;],         num_rows: 50000     }) })   At this point, our dataset is ready to be passed into the encoder.  The next step is to create a training configuration. We do this using the configuration class TrainingArguments where we specify how the model should be trained. In our case we use:  training_args = TrainingArguments(     output_dir=cfg.res_path,     overwrite_output_dir=True,     eval_strategy=&quot;epoch&quot;,     save_strategy=&quot;epoch&quot;,     logging_strategy=&quot;epoch&quot;,     learning_rate=2e-5,     per_device_train_batch_size=8,     num_train_epochs=3,     load_best_model_at_end=True, )   The first line shows that the output directory where we output the trained model to is res_path, which is defined in our parameters yaml file. The next line specifies that the existing file in the directory will be overwritten by this model. The evaluation will be done every epoch, the checkpoints will be saved every epoch, and metrics logging will be done for every epoch, as well. The learning rate is initialized at $2 \times 10^{-5}$ and the batch size is chosen to be $8$. Overall, the training will be done over three epochs, and once training is done the best model will be loaded. WHile there are many more arguments that can be customized, I only show the basics. I refer you to the Hugging Face documentation for an exhaustive list of the available parameters.  Once our training configuration is complete, we need to set up the training wrapper using Trainer. The Trainer class is a high-level training API provided by Hugging Face that automates the training process. Before, we had to write the training loop, which involved telling PyTorch to calculate the loss function, zero the gradients, propagate the loss, and step the optimizer. Trainer takes care of all the heavy lifting for us under the hood. We initialize the Trainer class as follows:  trainer = Trainer(     model=model,     args=training_args,     train_dataset=imdb_tokenized[&quot;train&quot;].shuffle(seed=42).select(range(2000)),     eval_dataset=imdb_tokenized[&quot;test&quot;].shuffle(seed=42).select(range(1000)),     processing_class=inst.tokenizer,     compute_metrics=compute_metrics )   As can be seen, we pass in the model, the training arguments, the different datasets, the tokenizer, and what metrics we want to use (in our case F1 score and accuracy). These datasets are huge so we shuffe, seed, and select a subset of the train ($2000$ samples) and test ($1000$ samples) set as a demonstration. In actual fine-tuning, it’s essential to use all the available data. Now, all we have to do is run trainer.train() and the model begins to train.  For our example, we get the following metrics:  Epoch 	Training Loss   Validation Loss    Accuracy        F1   1 	   0.430200 	    0.303589 	   0.879000 	0.878852   2 	   0.196300 	    0.402086 	   0.884000 	0.883926   3 	   0.115300 	    0.430588 	   0.893000 	0.893013   Overall the metrics look good. The training loss is decreasing per epoch, which is what we are looking for. It also seems exponential, which is a good sign of healthy training. An increasing accuracy over epochs indicates that the model is classifying more examples correctly. The F1 score is also increasing and mirrors the accuracy. This implies that the dataset is balanced and there is no class bias occuring. While the validation loss does increase with each epoch meaning that the model is becoming overconfident and making more incorrect predictions as it trains, the increasing accuracy indicates that the model is still generalizing well. Steps can be taken to mitigate this issue such as early stopping, dropout, and reducing the learning rate.  Once trained, we check to see how well the model classifies the test data by viewing the metrics and plotting a confusion matrix:  {   &quot;test_loss&quot;: 0.32669803500175476,   &quot;test_accuracy&quot;: 0.8633333333333333,   &quot;test_f1 score&quot;: 0.8630762209036968 }     The test metrics are slightly lower, but in the same range as the train metrics, which is a good sign. Plotting a confusion matrix is nice to understand how the predictions are distributed. In this case, the confusion matrix shows that the model is mostly correct in its predictions as the metrics already showed. Our model is now ready to go!  Remember that we are solving a binary classifier problem where sentiment can either be positive or negative so let’s test it on random reviews I generated:  reviews = [     &quot;That movie was absolutely fantastic!&quot;,     &quot;I will never watch this again!&quot;,     &quot;Highly recommend to never watch again.&quot;,     &quot;Fantastic movie&quot;,     &quot;I kept wondering when it would be over.&quot;,     &quot;You couldn&#39;t pay me to watch it again.&quot; ]   Judging from the reviews, we can conclude that the first and fourth reviews are positive sentiment, while the rest are negative. Let’s see what the model thinks. First, we tokenize the reviews. Then, we put the model in eval mode, get the outputs, and convert to probabilities:  inputs = inst.tokenize_text(reviews)  model.eval() with tc.no_grad():     outputs = model(**inputs)      probs = tc.softmax(outputs.logits.to(&quot;cpu&quot;), dim=-1) predicted_classes = tc.argmax(probs, dim=-1) labels = [&quot;negative&quot;, &quot;positive&quot;]   The results are the following:  Text: &#39;That movie was absolutely fantastic!&#39; Probabilities: tensor([0.0520, 0.9480]) Predicted sentiment: positive (0.95 confidence)  Text: &#39;I will never watch this again!&#39; Probabilities: tensor([0.7030, 0.2970]) Predicted sentiment: negative (0.70 confidence)  Text: &#39;Highly recommend to never watch again.&#39; Probabilities: tensor([0.5231, 0.4769]) Predicted sentiment: negative (0.52 confidence)  Text: &#39;Fantastic movie.&#39; Probabilities: tensor([0.1731, 0.8269]) Predicted sentiment: positive (0.83 confidence)  Text: &#39;I kept wondering when it would be over.&#39; Probabilities: tensor([0.6879, 0.3121]) Predicted sentiment: negative (0.69 confidence)  Text: &#39;You couldn&#39;t pay me to watch it again.&#39; Probabilities: tensor([0.8785, 0.1215]) Predicted sentiment: negative (0.88 confidence)   Overall, the model performed well on the reviews. The model managed to correctly predict the sentiment for all the reviews. The first review was very clear in what it was trying to say, hence the high confidence in the positive sentiment classification. The same could be said about the last view when it comes to high confidence in negative sentiment classification.  The third review was borderline, but that’s because of the phrasing. It’s kind of tricky so the model may have a hard time classifying it. In fact, if we run the fine-tuning on different seeds, the third review constantly flips between negative and positive with the probabilities being borderline as they are now. It’s possible that edge cases like this are present in the dataset, which could explain some of the misclassified reviews in the off-diagonal portions of the confusion matrix plot. I would surmise that if we fine-tuned the model with the full training dataset, instead of just a subset, we may have been able to lower the values in the off-diagonal. Regardless, the values are small compared to the diagonal, so the subset chosen is good enough for our application.  We have managed to fine-tune a DistilBERT model to predict sentiment in movie reviews. To summarize, we have walked through the process of fine-tuning an encoder to perform a specific task, which was classify movie reviews. The process involved importing the pre-trained language model, tokenizing the dataset, setting up the training arguments and the Trainer class, fine-tuning the model, then seeing how well the model performs with unseen data. We then made up reviews, with one curveball in the mix, and the model managed to correctly classify them. Overall, we have now learned about encoders, how to fine-tune one for a specific task, and produced a model that performed well on a binary classification problem.  The code and confusion matrix plot presented in this post can be found on my Github under the nlp-model repo [2]. Feel free to reach out if you have any questions about what we covered this week. Next week we will move on to decoders. Stay tuned!  [1] Thomas Wolf, Lysandre Debut, Victor Sanh, et al., HuggingFace’s Transformers: State-of-the-art Natural Language Processing, 2020. Available at: https://arxiv.org/abs/1910.03771. [2] Alberto J. Garcia, NLP Model, 2025. Available at: https://github.com/AJG91/nlp-model. ⬅ Back to Home">
+
+
+
+
+
+
+
+  <meta property="article:published_time" content="2025-11-16T00:00:00-08:00">
+
+
+
+
+
+
+<link rel="canonical" href="https://ajg91.github.io//posts/large-language-models/encoder-distilbert-classifier/">
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- end _includes/seo.html -->
+
+
+
+  <link href="/feed.xml" type="application/atom+xml" rel="alternate" title="AJG's Homepage Feed">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+  
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css"></noscript>
+
+
+
+    <script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$','$$'], ['\\[','\\]']]
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
+  </head>
+
+  <body class="layout--single" dir="ltr">
+    <nav class="skip-links">
+  <ul>
+    <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
+    <li><a href="#main" class="screen-reader-shortcut">Skip to content</a></li>
+    <li><a href="#footer" class="screen-reader-shortcut">Skip to footer</a></li>
+  </ul>
+</nav>
+
+    
+
+<div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        
+        <a class="site-title" href="/">
+          AJG&#39;s Homepage
+          
+        </a>
+        <ul class="visible-links"><li class="masthead__menu-item">
+              <a
+                href="/posts/"
+                
+                
+              >Posts</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/publications/"
+                
+                
+              >Publications</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/talks/"
+                
+                
+              >Talks</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/software/"
+                
+                
+              >Software</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/contact/"
+                
+                
+              >Contact Me</a>
+            </li></ul>
+        
+        <button class="greedy-nav__toggle hidden" type="button">
+          <span class="visually-hidden">Toggle menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+
+    <div class="initial-content">
+      
+
+
+
+
+  
+    
+
+
+
+<nav class="breadcrumbs">
+  <ol itemscope itemtype="https://schema.org/BreadcrumbList">
+    
+    
+    
+      
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/" itemprop="item"><span itemprop="name">Home</span></a>
+
+          <meta itemprop="position" content="1" />
+        </li>
+        <span class="sep">/</span>
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/posts" itemprop="item"><span itemprop="name">Posts</span></a>
+          <meta itemprop="position" content="2" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/large-language-models" itemprop="item"><span itemprop="name">Large language models</span></a>
+          <meta itemprop="position" content="3" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        <li class="current">Natural language models: DistilBERT sentiment classifier</li>
+      
+    
+  </ol>
+</nav>
+
+  
+
+
+<div id="main" role="main">
+  
+
+
+  <article class="page" itemscope itemtype="https://schema.org/CreativeWork">
+    <meta itemprop="headline" content="Natural language models: DistilBERT sentiment classifier">
+    <meta itemprop="description" content="November 16, 2025This week we will be using an encoder to identifying sentiment in movie reviews. First, I will walk through the fine-tuning process. Then, I will show how we use the encoder to identify sentiment with text that the model has not seen.The classification problem is binary since the sentiment can either be positive or negative. The model we will be fine-tuning, as mentioned in the last post is DistilBERT. Like already discussed, DistilBERT is an encoder that is extracted from a bigger model known as BERT (Bidirectional Encoder Representations from Transformers). Compared to BERT, DistilBERT is about $56$% of the size and $60$% faster, but only retains $97$% of the performance. As is typical with natural language processing (NLP) models, we will be fine-tuning the model weights of an already trained model with a labeled dataset in order to orient the model towards our specific problem. We will use open-source code from Hugging Face, which is a company who has developed libraries for NLP applications and are most known for their transformers library [2].The first step is defining our parameters. Like previously seen, our parameters will be saved in a .yaml file and we will use SimpleNamespace as an easy way to store and access these parameters. Here are the parameters we will be using:{  &quot;model_name&quot;: &quot;distilbert-base-uncased&quot;,  &quot;seed&quot;: 42,  &quot;dpi&quot;: 400,  &quot;fig_path&quot;: &quot;../outputs/&quot;,  &quot;res_path&quot;: &quot;../results/&quot;}As can be see, the model name is distilbert-base-uncased. The next step is to load the dataset, model, and tokenizer. In the Notebook, this is done as follows:data = &quot;imdb&quot;dataset = load_dataset(data)inst = ModelAndTokenizer(cfg.model_name)model = inst.load_classification_model()imdb_tokenized = inst.tokenize_dataset(dataset)Before tokenizing, we much first specify which dataset we are going to be working with. Here, we will be using with the IMDb reviews, which we load using the Hugging Face function load_dataset. We create an instance of our custom class ModelAndTokenizer. This custom class contains methods to used for loading the model, tokenizing the dataset, etc. This class is defined as follows (I will omit the docstrings and unused methods for brevity. See the file model.py for more information):class ModelAndTokenizer():    def __init__(        self,         model_name: str    ):        self.model_name = model_name        self.device = get_device()        self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(model_name)    def tokenize_text(        self,         prompt: str,         padding: Union[bool, str] = True,         truncation: Union[bool, str] = True    ) -&gt; dict[str, tc.Tensor]:        inputs = self.tokenizer(            prompt,            padding=padding,            truncation=truncation,            return_tensors=&quot;pt&quot;        )        return to_device(inputs, self.device)        def tokenize_dataset(        self,         dataset: Union[Dataset, DatasetDict],         padding: Union[bool, str] = True,         truncation: Union[bool, str] = True    ) -&gt; Union[Dataset, DatasetDict]:        data_tokenized = dataset.map(            lambda x: self.tokenizer(                x[&quot;text&quot;],                padding=padding,                truncation=truncation            ),             batched=True,            remove_columns=[&quot;text&quot;]        )        return data_tokenized    def load_classification_model(        self,         attentions: bool = False    ) -&gt; PreTrainedModel:        model = AutoModelForSequenceClassification.from_pretrained(            self.model_name,            output_attentions=attentions        ).to(self.device)        return modelStarting from the top, we see that the input to the class is the model name, in this case distilbert-base-uncased. The load_classification_model method is how we load the model. For encoders, we will use the Hugging Face class AutoModelForSequenceClassification since we will be classifying text. We use the method from_pretrained() to load a pre-trained model, in this case DistilBERT. This method ensures that we also load the model weights. We also include the option of outputting the attentions. These are weights that inform us which are the tokens in a sequence that are more of an influence to specific tokens in that same sequence when processing the data. One can use this information to understand model behavior, token importance, or any model patterns. We also move the model to whatever device we want to use, such as CPU, GPU, etc.The next step is to tokenize the dataset, which we do using the method tokenize_dataset. This method maps a function to each element of the dataset using a lambda function. The lambda function is what applies the tokenizer to the datset. In this case, it takes x[&quot;text&quot;], which is raw text strings, and converts them to tokens. Each sequence is padded to be the same length and the texts that are too long are truncated. The dataset is then batched and the initial x[&quot;text&quot;] column is removed (this last step is optional). The output of this method will be a tokenized, batched dataset with labels, input_ids, and attention_mask columns. In our case, the initial dataset was composed of train, test, and unsupervised data with the following structure:DatasetDict({    train: Dataset({        features: [&#39;text&#39;, &#39;label&#39;],        num_rows: 25000    })    test: Dataset({        features: [&#39;text&#39;, &#39;label&#39;],        num_rows: 25000    })    unsupervised: Dataset({        features: [&#39;text&#39;, &#39;label&#39;],        num_rows: 50000    })})Now our tokenized dataset has the following structure:DatasetDict({    train: Dataset({        features: [&#39;label&#39;, &#39;input_ids&#39;, &#39;attention_mask&#39;],        num_rows: 25000    })    test: Dataset({        features: [&#39;label&#39;, &#39;input_ids&#39;, &#39;attention_mask&#39;],        num_rows: 25000    })    unsupervised: Dataset({        features: [&#39;label&#39;, &#39;input_ids&#39;, &#39;attention_mask&#39;],        num_rows: 50000    })})At this point, our dataset is ready to be passed into the encoder.The next step is to create a training configuration. We do this using the configuration class TrainingArguments where we specify how the model should be trained. In our case we use:training_args = TrainingArguments(    output_dir=cfg.res_path,    overwrite_output_dir=True,    eval_strategy=&quot;epoch&quot;,    save_strategy=&quot;epoch&quot;,    logging_strategy=&quot;epoch&quot;,    learning_rate=2e-5,    per_device_train_batch_size=8,    num_train_epochs=3,    load_best_model_at_end=True,)The first line shows that the output directory where we output the trained model to is res_path, which is defined in our parameters yaml file. The next line specifies that the existing file in the directory will be overwritten by this model. The evaluation will be done every epoch, the checkpoints will be saved every epoch, and metrics logging will be done for every epoch, as well. The learning rate is initialized at $2 \times 10^{-5}$ and the batch size is chosen to be $8$. Overall, the training will be done over three epochs, and once training is done the best model will be loaded. WHile there are many more arguments that can be customized, I only show the basics. I refer you to the Hugging Face documentation for an exhaustive list of the available parameters.Once our training configuration is complete, we need to set up the training wrapper using Trainer. The Trainer class is a high-level training API provided by Hugging Face that automates the training process. Before, we had to write the training loop, which involved telling PyTorch to calculate the loss function, zero the gradients, propagate the loss, and step the optimizer. Trainer takes care of all the heavy lifting for us under the hood. We initialize the Trainer class as follows:trainer = Trainer(    model=model,    args=training_args,    train_dataset=imdb_tokenized[&quot;train&quot;].shuffle(seed=42).select(range(2000)),    eval_dataset=imdb_tokenized[&quot;test&quot;].shuffle(seed=42).select(range(1000)),    processing_class=inst.tokenizer,    compute_metrics=compute_metrics)As can be seen, we pass in the model, the training arguments, the different datasets, the tokenizer, and what metrics we want to use (in our case F1 score and accuracy). These datasets are huge so we shuffe, seed, and select a subset of the train ($2000$ samples) and test ($1000$ samples) set as a demonstration. In actual fine-tuning, it’s essential to use all the available data. Now, all we have to do is run trainer.train() and the model begins to train.For our example, we get the following metrics:Epoch 	Training Loss   Validation Loss    Accuracy        F1  1 	   0.430200 	    0.303589 	   0.879000 	0.878852  2 	   0.196300 	    0.402086 	   0.884000 	0.883926  3 	   0.115300 	    0.430588 	   0.893000 	0.893013Overall the metrics look good. The training loss is decreasing per epoch, which is what we are looking for. It also seems exponential, which is a good sign of healthy training. An increasing accuracy over epochs indicates that the model is classifying more examples correctly. The F1 score is also increasing and mirrors the accuracy. This implies that the dataset is balanced and there is no class bias occuring. While the validation loss does increase with each epoch meaning that the model is becoming overconfident and making more incorrect predictions as it trains, the increasing accuracy indicates that the model is still generalizing well. Steps can be taken to mitigate this issue such as early stopping, dropout, and reducing the learning rate.Once trained, we check to see how well the model classifies the test data by viewing the metrics and plotting a confusion matrix:{  &quot;test_loss&quot;: 0.32669803500175476,  &quot;test_accuracy&quot;: 0.8633333333333333,  &quot;test_f1 score&quot;: 0.8630762209036968}The test metrics are slightly lower, but in the same range as the train metrics, which is a good sign. Plotting a confusion matrix is nice to understand how the predictions are distributed. In this case, the confusion matrix shows that the model is mostly correct in its predictions as the metrics already showed. Our model is now ready to go!Remember that we are solving a binary classifier problem where sentiment can either be positive or negative so let’s test it on random reviews I generated:reviews = [    &quot;That movie was absolutely fantastic!&quot;,    &quot;I will never watch this again!&quot;,    &quot;Highly recommend to never watch again.&quot;,    &quot;Fantastic movie&quot;,    &quot;I kept wondering when it would be over.&quot;,    &quot;You couldn&#39;t pay me to watch it again.&quot;]Judging from the reviews, we can conclude that the first and fourth reviews are positive sentiment, while the rest are negative. Let’s see what the model thinks. First, we tokenize the reviews. Then, we put the model in eval mode, get the outputs, and convert to probabilities:inputs = inst.tokenize_text(reviews)model.eval()with tc.no_grad():    outputs = model(**inputs)    probs = tc.softmax(outputs.logits.to(&quot;cpu&quot;), dim=-1)predicted_classes = tc.argmax(probs, dim=-1)labels = [&quot;negative&quot;, &quot;positive&quot;]The results are the following:Text: &#39;That movie was absolutely fantastic!&#39;Probabilities: tensor([0.0520, 0.9480])Predicted sentiment: positive (0.95 confidence)Text: &#39;I will never watch this again!&#39;Probabilities: tensor([0.7030, 0.2970])Predicted sentiment: negative (0.70 confidence)Text: &#39;Highly recommend to never watch again.&#39;Probabilities: tensor([0.5231, 0.4769])Predicted sentiment: negative (0.52 confidence)Text: &#39;Fantastic movie.&#39;Probabilities: tensor([0.1731, 0.8269])Predicted sentiment: positive (0.83 confidence)Text: &#39;I kept wondering when it would be over.&#39;Probabilities: tensor([0.6879, 0.3121])Predicted sentiment: negative (0.69 confidence)Text: &#39;You couldn&#39;t pay me to watch it again.&#39;Probabilities: tensor([0.8785, 0.1215])Predicted sentiment: negative (0.88 confidence)Overall, the model performed well on the reviews. The model managed to correctly predict the sentiment for all the reviews. The first review was very clear in what it was trying to say, hence the high confidence in the positive sentiment classification. The same could be said about the last view when it comes to high confidence in negative sentiment classification.The third review was borderline, but that’s because of the phrasing. It’s kind of tricky so the model may have a hard time classifying it. In fact, if we run the fine-tuning on different seeds, the third review constantly flips between negative and positive with the probabilities being borderline as they are now. It’s possible that edge cases like this are present in the dataset, which could explain some of the misclassified reviews in the off-diagonal portions of the confusion matrix plot. I would surmise that if we fine-tuned the model with the full training dataset, instead of just a subset, we may have been able to lower the values in the off-diagonal. Regardless, the values are small compared to the diagonal, so the subset chosen is good enough for our application.We have managed to fine-tune a DistilBERT model to predict sentiment in movie reviews. To summarize, we have walked through the process of fine-tuning an encoder to perform a specific task, which was classify movie reviews. The process involved importing the pre-trained language model, tokenizing the dataset, setting up the training arguments and the Trainer class, fine-tuning the model, then seeing how well the model performs with unseen data. We then made up reviews, with one curveball in the mix, and the model managed to correctly classify them. Overall, we have now learned about encoders, how to fine-tune one for a specific task, and produced a model that performed well on a binary classification problem.The code and confusion matrix plot presented in this post can be found on my Github under the nlp-model repo [2]. Feel free to reach out if you have any questions about what we covered this week. Next week we will move on to decoders. Stay tuned![1] Thomas Wolf, Lysandre Debut, Victor Sanh, et al., HuggingFace’s Transformers: State-of-the-art Natural Language Processing, 2020. Available at: https://arxiv.org/abs/1910.03771.[2] Alberto J. Garcia, NLP Model, 2025. Available at: https://github.com/AJG91/nlp-model.⬅ Back to Home">
+    <meta itemprop="datePublished" content="2025-11-16T00:00:00-08:00">
+    
+
+    <div class="page__inner-wrap">
+      
+        <header>
+          <h1 id="page-title" class="page__title" itemprop="headline">
+            <a href="https://ajg91.github.io//posts/large-language-models/encoder-distilbert-classifier/" itemprop="url">Natural language models: DistilBERT sentiment classifier
+</a>
+          </h1>
+          
+
+
+        </header>
+      
+
+      <section class="page__content" itemprop="text">
+        
+        <p class="post-date">November 16, 2025</p>
+
+<p>This week we will be using an encoder to identifying sentiment in movie reviews. First, I will walk through the fine-tuning process. Then, I will show how we use the encoder to identify sentiment with text that the model has not seen.</p>
+
+<p>The classification problem is binary since the sentiment can either be positive or negative. The model we will be fine-tuning, as mentioned in the last post is DistilBERT. Like already discussed, DistilBERT is an encoder that is extracted from a bigger model known as BERT (Bidirectional Encoder Representations from Transformers). Compared to BERT, DistilBERT is about $56$% of the size and $60$% faster, but only retains $97$% of the performance. As is typical with natural language processing (NLP) models, we will be fine-tuning the model weights of an already trained model with a labeled dataset in order to orient the model towards our specific problem. We will use open-source code from Hugging Face, which is a company who has developed libraries for NLP applications and are most known for their transformers <a href="https://huggingface.co/docs/transformers/en/index" title="hf-transformers">library</a> <a class="citation" href="#wolf2020huggingfacestransformersstateoftheartnatural">[1]</a>.</p>
+
+<p>The first step is defining our parameters. Like previously seen, our parameters will be saved in a <code class="language-plaintext highlighter-rouge">.yaml</code> file and we will use SimpleNamespace as an easy way to store and access these parameters. Here are the parameters we will be using:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span>
+  <span class="sh">"</span><span class="s">model_name</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">distilbert-base-uncased</span><span class="sh">"</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">seed</span><span class="sh">"</span><span class="p">:</span> <span class="mi">42</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">dpi</span><span class="sh">"</span><span class="p">:</span> <span class="mi">400</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">fig_path</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">../outputs/</span><span class="sh">"</span><span class="p">,</span>
+  <span class="sh">"</span><span class="s">res_path</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">../results/</span><span class="sh">"</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>As can be see, the model name is <code class="language-plaintext highlighter-rouge">distilbert-base-uncased</code>. The next step is to load the dataset, model, and tokenizer. In the Notebook, this is done as follows:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">data</span> <span class="o">=</span> <span class="sh">"</span><span class="s">imdb</span><span class="sh">"</span>
+<span class="n">dataset</span> <span class="o">=</span> <span class="nf">load_dataset</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+<span class="n">inst</span> <span class="o">=</span> <span class="nc">ModelAndTokenizer</span><span class="p">(</span><span class="n">cfg</span><span class="p">.</span><span class="n">model_name</span><span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">inst</span><span class="p">.</span><span class="nf">load_classification_model</span><span class="p">()</span>
+<span class="n">imdb_tokenized</span> <span class="o">=</span> <span class="n">inst</span><span class="p">.</span><span class="nf">tokenize_dataset</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Before tokenizing, we much first specify which dataset we are going to be working with. Here, we will be using with the IMDb reviews, which we load using the Hugging Face function <code class="language-plaintext highlighter-rouge">load_dataset</code>. We create an instance of our custom class <code class="language-plaintext highlighter-rouge">ModelAndTokenizer</code>. This custom class contains methods to used for loading the model, tokenizing the dataset, etc. This class is defined as follows (I will omit the docstrings and unused methods for brevity. See the file <code class="language-plaintext highlighter-rouge">model.py</code> for more information):</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">ModelAndTokenizer</span><span class="p">():</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">,</span> 
+        <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="p">):</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">model_name</span> <span class="o">=</span> <span class="n">model_name</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">device</span> <span class="o">=</span> <span class="nf">get_device</span><span class="p">()</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">tokenizer</span><span class="p">:</span> <span class="n">PreTrainedTokenizerBase</span> <span class="o">=</span> <span class="n">AutoTokenizer</span><span class="p">.</span><span class="nf">from_pretrained</span><span class="p">(</span><span class="n">model_name</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">tokenize_text</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">,</span> 
+        <span class="n">prompt</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> 
+        <span class="n">padding</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span><span class="p">,</span> 
+        <span class="n">truncation</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">tc</span><span class="p">.</span><span class="n">Tensor</span><span class="p">]:</span>
+        <span class="n">inputs</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">tokenizer</span><span class="p">(</span>
+            <span class="n">prompt</span><span class="p">,</span>
+            <span class="n">padding</span><span class="o">=</span><span class="n">padding</span><span class="p">,</span>
+            <span class="n">truncation</span><span class="o">=</span><span class="n">truncation</span><span class="p">,</span>
+            <span class="n">return_tensors</span><span class="o">=</span><span class="sh">"</span><span class="s">pt</span><span class="sh">"</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="nf">to_device</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">self</span><span class="p">.</span><span class="n">device</span><span class="p">)</span>
+    
+    <span class="k">def</span> <span class="nf">tokenize_dataset</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">,</span> 
+        <span class="n">dataset</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Dataset</span><span class="p">,</span> <span class="n">DatasetDict</span><span class="p">],</span> 
+        <span class="n">padding</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span><span class="p">,</span> 
+        <span class="n">truncation</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">Dataset</span><span class="p">,</span> <span class="n">DatasetDict</span><span class="p">]:</span>
+        <span class="n">data_tokenized</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">.</span><span class="nf">map</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">self</span><span class="p">.</span><span class="nf">tokenizer</span><span class="p">(</span>
+                <span class="n">x</span><span class="p">[</span><span class="sh">"</span><span class="s">text</span><span class="sh">"</span><span class="p">],</span>
+                <span class="n">padding</span><span class="o">=</span><span class="n">padding</span><span class="p">,</span>
+                <span class="n">truncation</span><span class="o">=</span><span class="n">truncation</span>
+            <span class="p">),</span> 
+            <span class="n">batched</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+            <span class="n">remove_columns</span><span class="o">=</span><span class="p">[</span><span class="sh">"</span><span class="s">text</span><span class="sh">"</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">data_tokenized</span>
+
+    <span class="k">def</span> <span class="nf">load_classification_model</span><span class="p">(</span>
+        <span class="n">self</span><span class="p">,</span> 
+        <span class="n">attentions</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="bp">False</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PreTrainedModel</span><span class="p">:</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="n">AutoModelForSequenceClassification</span><span class="p">.</span><span class="nf">from_pretrained</span><span class="p">(</span>
+            <span class="n">self</span><span class="p">.</span><span class="n">model_name</span><span class="p">,</span>
+            <span class="n">output_attentions</span><span class="o">=</span><span class="n">attentions</span>
+        <span class="p">).</span><span class="nf">to</span><span class="p">(</span><span class="n">self</span><span class="p">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">model</span>
+</code></pre></div></div>
+
+<p>Starting from the top, we see that the input to the class is the model name, in this case <code class="language-plaintext highlighter-rouge">distilbert-base-uncased</code>. The <code class="language-plaintext highlighter-rouge">load_classification_model</code> method is how we load the model. For encoders, we will use the Hugging Face class <code class="language-plaintext highlighter-rouge">AutoModelForSequenceClassification</code> since we will be classifying text. We use the method <code class="language-plaintext highlighter-rouge">from_pretrained()</code> to load a pre-trained model, in this case DistilBERT. This method ensures that we also load the model weights. We also include the option of outputting the attentions. These are weights that inform us which are the tokens in a sequence that are more of an influence to specific tokens in that same sequence when processing the data. One can use this information to understand model behavior, token importance, or any model patterns. We also move the model to whatever device we want to use, such as CPU, GPU, etc.</p>
+
+<p>The next step is to tokenize the dataset, which we do using the method <code class="language-plaintext highlighter-rouge">tokenize_dataset</code>. This method maps a function to each element of the dataset using a lambda function. The lambda function is what applies the tokenizer to the datset. In this case, it takes <code class="language-plaintext highlighter-rouge">x["text"]</code>, which is raw text strings, and converts them to tokens. Each sequence is padded to be the same length and the texts that are too long are truncated. The dataset is then batched and the initial <code class="language-plaintext highlighter-rouge">x["text"]</code> column is removed (this last step is optional). The output of this method will be a tokenized, batched dataset with <code class="language-plaintext highlighter-rouge">labels</code>, <code class="language-plaintext highlighter-rouge">input_ids</code>, and <code class="language-plaintext highlighter-rouge">attention_mask</code> columns. In our case, the initial dataset was composed of train, test, and unsupervised data with the following structure:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">DatasetDict</span><span class="p">({</span>
+    <span class="n">train</span><span class="p">:</span> <span class="nc">Dataset</span><span class="p">({</span>
+        <span class="n">features</span><span class="p">:</span> <span class="p">[</span><span class="sh">'</span><span class="s">text</span><span class="sh">'</span><span class="p">,</span> <span class="sh">'</span><span class="s">label</span><span class="sh">'</span><span class="p">],</span>
+        <span class="n">num_rows</span><span class="p">:</span> <span class="mi">25000</span>
+    <span class="p">})</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nc">Dataset</span><span class="p">({</span>
+        <span class="n">features</span><span class="p">:</span> <span class="p">[</span><span class="sh">'</span><span class="s">text</span><span class="sh">'</span><span class="p">,</span> <span class="sh">'</span><span class="s">label</span><span class="sh">'</span><span class="p">],</span>
+        <span class="n">num_rows</span><span class="p">:</span> <span class="mi">25000</span>
+    <span class="p">})</span>
+    <span class="n">unsupervised</span><span class="p">:</span> <span class="nc">Dataset</span><span class="p">({</span>
+        <span class="n">features</span><span class="p">:</span> <span class="p">[</span><span class="sh">'</span><span class="s">text</span><span class="sh">'</span><span class="p">,</span> <span class="sh">'</span><span class="s">label</span><span class="sh">'</span><span class="p">],</span>
+        <span class="n">num_rows</span><span class="p">:</span> <span class="mi">50000</span>
+    <span class="p">})</span>
+<span class="p">})</span>
+</code></pre></div></div>
+
+<p>Now our tokenized dataset has the following structure:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">DatasetDict</span><span class="p">({</span>
+    <span class="n">train</span><span class="p">:</span> <span class="nc">Dataset</span><span class="p">({</span>
+        <span class="n">features</span><span class="p">:</span> <span class="p">[</span><span class="sh">'</span><span class="s">label</span><span class="sh">'</span><span class="p">,</span> <span class="sh">'</span><span class="s">input_ids</span><span class="sh">'</span><span class="p">,</span> <span class="sh">'</span><span class="s">attention_mask</span><span class="sh">'</span><span class="p">],</span>
+        <span class="n">num_rows</span><span class="p">:</span> <span class="mi">25000</span>
+    <span class="p">})</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nc">Dataset</span><span class="p">({</span>
+        <span class="n">features</span><span class="p">:</span> <span class="p">[</span><span class="sh">'</span><span class="s">label</span><span class="sh">'</span><span class="p">,</span> <span class="sh">'</span><span class="s">input_ids</span><span class="sh">'</span><span class="p">,</span> <span class="sh">'</span><span class="s">attention_mask</span><span class="sh">'</span><span class="p">],</span>
+        <span class="n">num_rows</span><span class="p">:</span> <span class="mi">25000</span>
+    <span class="p">})</span>
+    <span class="n">unsupervised</span><span class="p">:</span> <span class="nc">Dataset</span><span class="p">({</span>
+        <span class="n">features</span><span class="p">:</span> <span class="p">[</span><span class="sh">'</span><span class="s">label</span><span class="sh">'</span><span class="p">,</span> <span class="sh">'</span><span class="s">input_ids</span><span class="sh">'</span><span class="p">,</span> <span class="sh">'</span><span class="s">attention_mask</span><span class="sh">'</span><span class="p">],</span>
+        <span class="n">num_rows</span><span class="p">:</span> <span class="mi">50000</span>
+    <span class="p">})</span>
+<span class="p">})</span>
+</code></pre></div></div>
+
+<p>At this point, our dataset is ready to be passed into the encoder.</p>
+
+<p>The next step is to create a training configuration. We do this using the configuration class TrainingArguments where we specify how the model should be trained. In our case we use:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">training_args</span> <span class="o">=</span> <span class="nc">TrainingArguments</span><span class="p">(</span>
+    <span class="n">output_dir</span><span class="o">=</span><span class="n">cfg</span><span class="p">.</span><span class="n">res_path</span><span class="p">,</span>
+    <span class="n">overwrite_output_dir</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+    <span class="n">eval_strategy</span><span class="o">=</span><span class="sh">"</span><span class="s">epoch</span><span class="sh">"</span><span class="p">,</span>
+    <span class="n">save_strategy</span><span class="o">=</span><span class="sh">"</span><span class="s">epoch</span><span class="sh">"</span><span class="p">,</span>
+    <span class="n">logging_strategy</span><span class="o">=</span><span class="sh">"</span><span class="s">epoch</span><span class="sh">"</span><span class="p">,</span>
+    <span class="n">learning_rate</span><span class="o">=</span><span class="mf">2e-5</span><span class="p">,</span>
+    <span class="n">per_device_train_batch_size</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+    <span class="n">num_train_epochs</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+    <span class="n">load_best_model_at_end</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>The first line shows that the output directory where we output the trained model to is <code class="language-plaintext highlighter-rouge">res_path</code>, which is defined in our parameters yaml file. The next line specifies that the existing file in the directory will be overwritten by this model. The evaluation will be done every epoch, the checkpoints will be saved every epoch, and metrics logging will be done for every epoch, as well. The learning rate is initialized at $2 \times 10^{-5}$ and the batch size is chosen to be $8$. Overall, the training will be done over three epochs, and once training is done the best model will be loaded. WHile there are many more arguments that can be customized, I only show the basics. I refer you to the Hugging Face <a href="https://huggingface.co/docs/transformers/v4.57.1/en/main_classes/trainer#transformers.TrainingArguments" title="training-args">documentation</a> for an exhaustive list of the available parameters.</p>
+
+<p>Once our training configuration is complete, we need to set up the training wrapper using Trainer. The Trainer class is a high-level training API provided by Hugging Face that automates the training process. Before, we had to write the training loop, which involved telling PyTorch to calculate the loss function, zero the gradients, propagate the loss, and step the optimizer. Trainer takes care of all the heavy lifting for us under the hood. We initialize the Trainer class as follows:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">trainer</span> <span class="o">=</span> <span class="nc">Trainer</span><span class="p">(</span>
+    <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+    <span class="n">args</span><span class="o">=</span><span class="n">training_args</span><span class="p">,</span>
+    <span class="n">train_dataset</span><span class="o">=</span><span class="n">imdb_tokenized</span><span class="p">[</span><span class="sh">"</span><span class="s">train</span><span class="sh">"</span><span class="p">].</span><span class="nf">shuffle</span><span class="p">(</span><span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">).</span><span class="nf">select</span><span class="p">(</span><span class="nf">range</span><span class="p">(</span><span class="mi">2000</span><span class="p">)),</span>
+    <span class="n">eval_dataset</span><span class="o">=</span><span class="n">imdb_tokenized</span><span class="p">[</span><span class="sh">"</span><span class="s">test</span><span class="sh">"</span><span class="p">].</span><span class="nf">shuffle</span><span class="p">(</span><span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">).</span><span class="nf">select</span><span class="p">(</span><span class="nf">range</span><span class="p">(</span><span class="mi">1000</span><span class="p">)),</span>
+    <span class="n">processing_class</span><span class="o">=</span><span class="n">inst</span><span class="p">.</span><span class="n">tokenizer</span><span class="p">,</span>
+    <span class="n">compute_metrics</span><span class="o">=</span><span class="n">compute_metrics</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>As can be seen, we pass in the model, the training arguments, the different datasets, the tokenizer, and what metrics we want to use (in our case F1 score and accuracy). These datasets are huge so we shuffe, seed, and select a subset of the train ($2000$ samples) and test ($1000$ samples) set as a demonstration. In actual fine-tuning, it’s essential to use all the available data. Now, all we have to do is run <code class="language-plaintext highlighter-rouge">trainer.train()</code> and the model begins to train.</p>
+
+<p>For our example, we get the following metrics:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Epoch 	Training Loss   Validation Loss    Accuracy        F1
+  1 	   0.430200 	    0.303589 	   0.879000 	0.878852
+  2 	   0.196300 	    0.402086 	   0.884000 	0.883926
+  3 	   0.115300 	    0.430588 	   0.893000 	0.893013
+</code></pre></div></div>
+
+<p>Overall the metrics look good. The training loss is decreasing per epoch, which is what we are looking for. It also seems exponential, which is a good sign of healthy training. An increasing accuracy over epochs indicates that the model is classifying more examples correctly. The F1 score is also increasing <em>and</em> mirrors the accuracy. This implies that the dataset is balanced and there is no class bias occuring. While the validation loss does increase with each epoch meaning that the model is becoming overconfident and making more incorrect predictions as it trains, the increasing accuracy indicates that the model is still generalizing well. Steps can be taken to mitigate this issue such as early stopping, dropout, and reducing the learning rate.</p>
+
+<p>Once trained, we check to see how well the model classifies the test data by viewing the metrics and plotting a confusion matrix:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+  "test_loss": 0.32669803500175476,
+  "test_accuracy": 0.8633333333333333,
+  "test_f1 score": 0.8630762209036968
+}
+</code></pre></div></div>
+
+<p><img src="/assets/images/nlp_model/confusion_matrix.png" alt="huber_base" /></p>
+
+<p>The test metrics are slightly lower, but in the same range as the train metrics, which is a good sign. Plotting a confusion matrix is nice to understand how the predictions are distributed. In this case, the confusion matrix shows that the model is mostly correct in its predictions as the metrics already showed. Our model is now ready to go!</p>
+
+<p>Remember that we are solving a binary classifier problem where sentiment can either be positive or negative so let’s test it on random reviews I generated:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reviews = [
+    "That movie was absolutely fantastic!",
+    "I will never watch this again!",
+    "Highly recommend to never watch again.",
+    "Fantastic movie",
+    "I kept wondering when it would be over.",
+    "You couldn't pay me to watch it again."
+]
+</code></pre></div></div>
+
+<p>Judging from the reviews, we can conclude that the first and fourth reviews are positive sentiment, while the rest are negative. Let’s see what the model thinks. First, we tokenize the reviews. Then, we put the model in eval mode, get the outputs, and convert to probabilities:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">inputs</span> <span class="o">=</span> <span class="n">inst</span><span class="p">.</span><span class="nf">tokenize_text</span><span class="p">(</span><span class="n">reviews</span><span class="p">)</span>
+
+<span class="n">model</span><span class="p">.</span><span class="nf">eval</span><span class="p">()</span>
+<span class="k">with</span> <span class="n">tc</span><span class="p">.</span><span class="nf">no_grad</span><span class="p">():</span>
+    <span class="n">outputs</span> <span class="o">=</span> <span class="nf">model</span><span class="p">(</span><span class="o">**</span><span class="n">inputs</span><span class="p">)</span>
+    
+<span class="n">probs</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">softmax</span><span class="p">(</span><span class="n">outputs</span><span class="p">.</span><span class="n">logits</span><span class="p">.</span><span class="nf">to</span><span class="p">(</span><span class="sh">"</span><span class="s">cpu</span><span class="sh">"</span><span class="p">),</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">predicted_classes</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">argmax</span><span class="p">(</span><span class="n">probs</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">labels</span> <span class="o">=</span> <span class="p">[</span><span class="sh">"</span><span class="s">negative</span><span class="sh">"</span><span class="p">,</span> <span class="sh">"</span><span class="s">positive</span><span class="sh">"</span><span class="p">]</span>
+</code></pre></div></div>
+
+<p>The results are the following:</p>
+
+<div class="language-text highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Text: 'That movie was absolutely fantastic!'
+Probabilities: tensor([0.0520, 0.9480])
+Predicted sentiment: positive (0.95 confidence)
+
+Text: 'I will never watch this again!'
+Probabilities: tensor([0.7030, 0.2970])
+Predicted sentiment: negative (0.70 confidence)
+
+Text: 'Highly recommend to never watch again.'
+Probabilities: tensor([0.5231, 0.4769])
+Predicted sentiment: negative (0.52 confidence)
+
+Text: 'Fantastic movie.'
+Probabilities: tensor([0.1731, 0.8269])
+Predicted sentiment: positive (0.83 confidence)
+
+Text: 'I kept wondering when it would be over.'
+Probabilities: tensor([0.6879, 0.3121])
+Predicted sentiment: negative (0.69 confidence)
+
+Text: 'You couldn't pay me to watch it again.'
+Probabilities: tensor([0.8785, 0.1215])
+Predicted sentiment: negative (0.88 confidence)
+</code></pre></div></div>
+
+<p>Overall, the model performed well on the reviews. The model managed to correctly predict the sentiment for all the reviews. The first review was very clear in what it was trying to say, hence the high confidence in the positive sentiment classification. The same could be said about the last view when it comes to high confidence in negative sentiment classification.</p>
+
+<p>The third review was borderline, but that’s because of the phrasing. It’s kind of tricky so the model may have a hard time classifying it. In fact, if we run the fine-tuning on different seeds, the third review constantly flips between negative and positive with the probabilities being borderline as they are now. It’s possible that edge cases like this are present in the dataset, which could explain some of the misclassified reviews in the off-diagonal portions of the confusion matrix plot. I would surmise that if we fine-tuned the model with the full training dataset, instead of just a subset, we may have been able to lower the values in the off-diagonal. Regardless, the values are small compared to the diagonal, so the subset chosen is good enough for our application.</p>
+
+<p>We have managed to fine-tune a DistilBERT model to predict sentiment in movie reviews. To summarize, we have walked through the process of fine-tuning an encoder to perform a specific task, which was classify movie reviews. The process involved importing the pre-trained language model, tokenizing the dataset, setting up the training arguments and the Trainer class, fine-tuning the model, then seeing how well the model performs with unseen data. We then made up reviews, with one curveball in the mix, and the model managed to correctly classify them. Overall, we have now learned about encoders, how to fine-tune one for a specific task, and produced a model that performed well on a binary classification problem.</p>
+
+<p>The code and confusion matrix plot presented in this post can be found on my Github under the <a href="https://github.com/AJG91/nlp-model" title="nlp-model-repo">nlp-model</a> repo <a class="citation" href="#Garcia2025NLPModel">[2]</a>. Feel free to reach out if you have any questions about what we covered this week. Next week we will move on to decoders. Stay tuned!</p>
+
+<ol class="bibliography"><li><span id="wolf2020huggingfacestransformersstateoftheartnatural">[1] Thomas Wolf, Lysandre Debut, Victor Sanh, et al., <i>HuggingFace’s Transformers: State-of-the-art Natural Language Processing</i>, 2020. Available at: https://arxiv.org/abs/1910.03771.</span></li>
+<li><span id="Garcia2025NLPModel">[2] Alberto J. Garcia, <i>NLP Model</i>, 2025. Available at: https://github.com/AJG91/nlp-model.</span></li></ol>
+<p><a href="/" class="btn">⬅ Back to Home</a></p>
+
+        
+      </section>
+
+      <footer class="page__meta">
+        
+        
+
+
+        
+
+  <p class="page__date"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Updated:</strong> <time class="dt-published" datetime="2025-11-16T00:00:00-08:00">November 16, 2025</time></p>
+
+      </footer>
+
+      
+
+      
+  <nav class="pagination">
+    
+      <a href="/posts/large-language-models/natural-language-processing-model/" class="pagination--pager" title="Natural language models: An introduction to human-computer language interaction">Previous</a>
+    
+    
+      <a href="/posts/large-language-models/decoder-gpt-2-example/" class="pagination--pager" title="Natural language models: GPT-2 causal text generator">Next</a>
+    
+  </nav>
+
+
+    </div>
+
+    
+  </article>
+
+  
+  
+</div>
+
+      
+    </div>
+
+    
+
+    <div id="footer" class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        
+
+<div class="page__footer-follow">
+  <ul class="social-icons">
+    
+
+    
+
+    
+      <li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+    
+  </ul>
+</div>
+
+
+<div class="page__footer-copyright">&copy; 2026 <a href="https://ajg91.github.io/">AJG&#39;s Homepage</a>. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/jekyll-themes/minimal-mistakes/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+
+  </body>
+</html>

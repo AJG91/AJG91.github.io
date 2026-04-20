@@ -1,0 +1,571 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.27.3 by Michael Rose
+  Copyright 2013-2025 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE
+-->
+
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin _includes/seo.html --><title>Linear regression: Applying PyTorch to projectile motion example - AJG’s Homepage</title>
+<meta name="description" content="August 31, 2025  Last time, we went over how to apply linear regression to a problem using Scikit-learn. I showed the process and the results of Scikit-learn’s LinearRegression. In this post, I will show how to apply linear regression in Python using PyTorch. We will be using the same projectile motion example as before.  We will be using the class torch.nn.Linear. Before we build the linear layer we need to normalize our data. It is standard practice to normalize the data whenever you use a model that performs backpropagation. This has various positive effects such as:     Improved learning            If the inputs are too large, the gradient descent will bounce around too much, which makes it difficult for the model to learn.       If the inputs are too small, the gradient descent will move too slow, which makes learning very slow.           Avoid exploding gradients            If the inputs are too large, this can lead to large gradients in backpropagation, which will hinder learning. This is known as the exploding gradient problem.       If the inputs are too small, this can lead to small gradients in backpropagation, which will also hinder learning. This is known as the vanishing gradient problem.           Faster convergence            By normalizing the input data, one creates a more well-conditioned loss surface, which allows the optimizer to take more efficient steps.       Leads to a faster and more efficient training stage.           Here is the process of normalizing the data:  def gaussian_norm(x, std, mean):     return (x - mean) / std  def inverse_gaussian_norm(x, std, mean):     return x * std + mean  t_std, t_mean = tc.std(t_rand), tc.mean(t_rand) x_std, x_mean = tc.std(x), tc.mean(x) y_std, y_mean = tc.std(y), tc.mean(y)  t_norm = gaussian_norm(t_rand, t_std, t_mean) x_norm = gaussian_norm(x, x_std, x_mean) y_norm = gaussian_norm(y, y_std, y_mean)   Note: Since we are normalizing the inputs, the outputs will also be normalized. This means that after we make a prediction, we have to “unnormalize” the result. The function I use to do this is inverse_gaussian_norm().  The following code is the class used to apply the linear layer to our data:  class BuildLinearLayer():     def __init__(self, num_features, lr, bias=True):         self.model = nn.Linear(in_features=num_features[0],                                 out_features=num_features[1],                                 bias=bias)         self.loss_fn = nn.MSELoss()         self.optimizer = tc.optim.SGD(self.model.parameters(), lr=lr)      def concat_nonlinear(self, X):         return tc.cat([X, X**2], dim=1)              def train(self, X, y, epochs, atol=1e-8):         model = self.model         loss_fn = self.loss_fn         optimizer = self.optimizer                  prev_loss = 0          if model.in_features &gt; 1:             X_feat = self.concat_nonlinear(X)         else:             X_feat = X                  for i, epoch_i in enumerate(range(epochs)):             y_pred = model(X_feat)             loss = loss_fn(y_pred, y)                          optimizer.zero_grad()             loss.backward()             optimizer.step()                      if (i + 1) % 100 == 0:                 print(f&#39;epoch = {i + 1}, loss = {loss}&#39;)                 plot_true_vs_pred(X, y, tc.squeeze(y_pred).detach())                      if abs(prev_loss - loss) &lt; atol:                 print(&#39;Training done&#39;)                 print(f&#39;Epoch = {i + 1}, loss = {loss}&#39;)                 print(f&#39;Residual: {abs(prev_loss - loss)} &lt; {atol}&#39;)                 plot_true_vs_pred(X, y, tc.squeeze(y_pred).detach())                 break                  prev_loss = loss          return None                  def predict(self, X):         model = self.model          if model.in_features &gt; 1:             X_feat = self.concat_nonlinear(X)         else:             X_feat = X                  with tc.no_grad():                             y = model(X_feat)                      return tc.squeeze(y.detach())   The linear layer is initialized in the constructor. We pass in the number of inputs, number of outputs, and whether or not it has a bias. In this case, adding a bias is ideal since we are trying to model a linear equation. We choose mean square error as our loss function and Stochastic Gradient Descent (SGD) as our optimizer with a learning rate that we initialize.  The train function is where the model will be trained. First, we check the input size. Since the equations for $x$ and $y$ differ in powers of $t^2$, the input size will be different when initializing the linear layer (more on this later). If the input size is greater than $1$, we call concat_nonlinear() on the data to reshape the input variables (see the previous post).  The training process is as follows:    Make a prediction using the input data.   Pass that prediction and the true values into the loss function.   Zero the gradients to get rid of older gradients.   Propagate the loss backwards through the model (backpropagation).   Step the optimizer.   This is the basic process used for training the linear model. The rest of what’s in the loop is not necessarily needed, but it is nice to have. The first if statement is used to plot the predictions at set intervals to get an idea as to how the model is training as we iternate through the number of epochs. The second if statement is used to stop the training process once the model is prediction at some absolute error below a threshold. We can choose to let the model train for all epochs, but this is not really necessary if the model’s prediction is within an acceptable tolerance.  The predict function is used to make predictions on a given set of inputs. It’s important that tc.no_grad() is used because you do not need the model to keep track of the gradients since there will be no backpropagation. In this specific example, it is not an issue if the gradients are calculated, but when you get to more complex models that take in more data and need to tune more parameters (hence more gradients), calculating the gradients when not necessary can take up memory and computation time that may be needed for training or parameter tuning.  The following code calls the class:  epochs = 2000 lr = 0.01  # Linear layer for x my_ll = BuildLinearLayer([1, 1], lr) my_ll.train(t_norm, x_norm, epochs) x_ll_norm = my_ll.predict(t_norm) x_ll = inverse_gaussian_norm(x_ll_norm, x_std, x_mean)  # Prediction for x t_pred_norm = gaussian_norm(t_pred, t_std, t_mean) x_ll_pred_norm = my_ll.predict(t_pred_norm) x_ll_pred = inverse_gaussian_norm(x_ll_pred_norm, x_std, x_mean)  # Linear layer for y my_ll = BuildLinearLayer([2, 1], lr) my_ll.train(t_norm, y_norm, epochs) y_ll_norm = my_ll.predict(t_norm) y_ll = inverse_gaussian_norm(y_ll_norm, y_std, y_mean)  # Prediction for y t_pred_norm = gaussian_norm(t_pred, t_std, t_mean) y_ll_pred_norm = my_ll.predict(t_pred_norm) y_ll_pred = inverse_gaussian_norm(y_ll_pred_norm, y_std, y_mean)   We choose the number of epochs to be $2000$ and set the learning rate for the optimizer at $10^{-2}$. We will be training two linear layers, one for $x$ in terms of $t$ and one for $y$ in terms of $t$. As can be seen for $y$, we are setting the number of features going into the model to $\text{in_feature} = 2$ since we have $x$ and $x^2$ and both will need weights, and setting the number of features going out of the model to $\text{out_feature} = 1$ since only one $y$ value will be predicted per $x$ and $x^2$. In contrast, $x$ only needs $\text{in_feature} = 1$ since it has no $x^2$ term. As previously mentioned, we need to unnormalize the predictions since the output will be normalized. This process is done for both the $x$ and $y$ prediction.  Here are the results of the linear layer:    The upper plot shows the linear regression process for the $x$ position and the lower onefor the $y$ position. From the legend, we see that the true values that were used to pick the random times are given in yellow triangles, the true values for the times we are trying to predict are given by the brown line, the training values ($t_\text{rand}$) are given by the black x, the predicted position of the $t_\text{rand}$ values are given by blue dots, and the prediction for the new times are given by red dots. Similar to Scikit-learn’s LinearRegression(), the model does a good job of predicting the positions for the times we do not have data for since the predictions match up with the truth.  The following plot shows how the trajectory would look to a person watching the object being thrown.    Here are the absolute errors:    The overall mean square error (MSE) is on the order of $10^{-2}$, the same as LinearRegression() with the same conclusion. Lets compare the errors between Scikit-learn and PyTorch:    The upper plot shows the absolute error for both methods in $x$ and the bottom in $y$. The MSE is given in the bottom left corner of each plot, where LL is the linear layer and SKL is the scikit-learn implementation. We see that they are pretty much the same. In some cases LinearRegression() performs slightly better, in other cases nn.Linear() performs better. Overall, as previously mentioned, we are limited by the noise in the data so neither model can prediction at an accuracy below the noise floor.  The lingering question is probably, “Which should I use: Scikit-learn or PyTorch?” Let’s go over the differences between Scikit-learn’s LinearRegression and PyTorch’s Linear:  Scikit-learn pros:    Easy to use            From last week’s blog you can see that using LinearRegression() is very straightforward. All you need to do to train the model is call LinearRegression().fit(t, y).           Efficient, well-known solvers            The solvers used in LinearRegression() are efficient. Some examples are singular value decomposition (SVD) and Ordinary Least Squares (OLS).           Built-in tools            Scikit-learn has a lot of useful libraries that ready to use, such as preprocessing functions and cross-validation.           Scikit-learn cons:    Doesn’t generalize well            Most of the Scikit-learn implementations are meant for classical machine learning problems. If you want something you can customize and have more control over, Scikit-learn may not be what you need.           No GPU support            The models can only be trained on the CPU. While this is fine for small problems, training will become a huge bottleneck for bigger, more complicated problems you train on the CPU.           Scaling issues            Does not scale well for large data sets and deep learning architectures.            PyTorch pros:    Flexibility            You have much better control over your models and can include custom loss functions and optimization schemes. PyTorch is like a sandbox where you can try to figure out what combinations of loss functions, layers, and optimizers produce the best model for your dataset.           GPU support            Can push training to the GPU using CUDA.           No scaling issues            No issue with scaling to large data sets or more advanced deep learning architectures such as neural networks.           PyTorch cons:    Takes more effort            As can be seen from the code, setting up training using PyTorch is more work than with Scikit-learn. One must specify the optimizer, the loss function, the layers, etc.           Can be overkill for simple problems            As mentioned in the previous bulletpoint, the setup is more complicated than with Scikit-learn. This may not be ideal for simple problems.           Not as many built-in tools            There are no built-in libraries that take care of tasks needed for machine learning problems, such as preprocessing, metrics, etc.           Overall, Scikit-learn is a solid choice if one is solving classic problems with small to medium datasets and need an out-of-the-box solution. Additionally, it is great for learning the basics of machine learning. On the other hand, PyTorch is great for deep learning problems with large datasets since training can be moved over to the GPU and because of the allowed customization in building your model.  The code presented and plots displayed in the Linear Regression posts can be found on my Github under the linear-regression repo [1]. Feel free to reach out if you have any questions about what we covered this week. Next time, I will teach you about convolutional neural networks (CNNs). Stay tuned!  [1] Alberto J. Garcia, Linear Regression, 2025. Available at: https://github.com/AJG91/linear-regression. ⬅ Back to Home">
+
+
+
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="AJG&#39;s Homepage">
+<meta property="og:title" content="Linear regression: Applying PyTorch to projectile motion example">
+<meta property="og:url" content="https://ajg91.github.io//posts/machine-learning/linear-regression-with-pytorch/">
+
+
+  <meta property="og:description" content="August 31, 2025  Last time, we went over how to apply linear regression to a problem using Scikit-learn. I showed the process and the results of Scikit-learn’s LinearRegression. In this post, I will show how to apply linear regression in Python using PyTorch. We will be using the same projectile motion example as before.  We will be using the class torch.nn.Linear. Before we build the linear layer we need to normalize our data. It is standard practice to normalize the data whenever you use a model that performs backpropagation. This has various positive effects such as:     Improved learning            If the inputs are too large, the gradient descent will bounce around too much, which makes it difficult for the model to learn.       If the inputs are too small, the gradient descent will move too slow, which makes learning very slow.           Avoid exploding gradients            If the inputs are too large, this can lead to large gradients in backpropagation, which will hinder learning. This is known as the exploding gradient problem.       If the inputs are too small, this can lead to small gradients in backpropagation, which will also hinder learning. This is known as the vanishing gradient problem.           Faster convergence            By normalizing the input data, one creates a more well-conditioned loss surface, which allows the optimizer to take more efficient steps.       Leads to a faster and more efficient training stage.           Here is the process of normalizing the data:  def gaussian_norm(x, std, mean):     return (x - mean) / std  def inverse_gaussian_norm(x, std, mean):     return x * std + mean  t_std, t_mean = tc.std(t_rand), tc.mean(t_rand) x_std, x_mean = tc.std(x), tc.mean(x) y_std, y_mean = tc.std(y), tc.mean(y)  t_norm = gaussian_norm(t_rand, t_std, t_mean) x_norm = gaussian_norm(x, x_std, x_mean) y_norm = gaussian_norm(y, y_std, y_mean)   Note: Since we are normalizing the inputs, the outputs will also be normalized. This means that after we make a prediction, we have to “unnormalize” the result. The function I use to do this is inverse_gaussian_norm().  The following code is the class used to apply the linear layer to our data:  class BuildLinearLayer():     def __init__(self, num_features, lr, bias=True):         self.model = nn.Linear(in_features=num_features[0],                                 out_features=num_features[1],                                 bias=bias)         self.loss_fn = nn.MSELoss()         self.optimizer = tc.optim.SGD(self.model.parameters(), lr=lr)      def concat_nonlinear(self, X):         return tc.cat([X, X**2], dim=1)              def train(self, X, y, epochs, atol=1e-8):         model = self.model         loss_fn = self.loss_fn         optimizer = self.optimizer                  prev_loss = 0          if model.in_features &gt; 1:             X_feat = self.concat_nonlinear(X)         else:             X_feat = X                  for i, epoch_i in enumerate(range(epochs)):             y_pred = model(X_feat)             loss = loss_fn(y_pred, y)                          optimizer.zero_grad()             loss.backward()             optimizer.step()                      if (i + 1) % 100 == 0:                 print(f&#39;epoch = {i + 1}, loss = {loss}&#39;)                 plot_true_vs_pred(X, y, tc.squeeze(y_pred).detach())                      if abs(prev_loss - loss) &lt; atol:                 print(&#39;Training done&#39;)                 print(f&#39;Epoch = {i + 1}, loss = {loss}&#39;)                 print(f&#39;Residual: {abs(prev_loss - loss)} &lt; {atol}&#39;)                 plot_true_vs_pred(X, y, tc.squeeze(y_pred).detach())                 break                  prev_loss = loss          return None                  def predict(self, X):         model = self.model          if model.in_features &gt; 1:             X_feat = self.concat_nonlinear(X)         else:             X_feat = X                  with tc.no_grad():                             y = model(X_feat)                      return tc.squeeze(y.detach())   The linear layer is initialized in the constructor. We pass in the number of inputs, number of outputs, and whether or not it has a bias. In this case, adding a bias is ideal since we are trying to model a linear equation. We choose mean square error as our loss function and Stochastic Gradient Descent (SGD) as our optimizer with a learning rate that we initialize.  The train function is where the model will be trained. First, we check the input size. Since the equations for $x$ and $y$ differ in powers of $t^2$, the input size will be different when initializing the linear layer (more on this later). If the input size is greater than $1$, we call concat_nonlinear() on the data to reshape the input variables (see the previous post).  The training process is as follows:    Make a prediction using the input data.   Pass that prediction and the true values into the loss function.   Zero the gradients to get rid of older gradients.   Propagate the loss backwards through the model (backpropagation).   Step the optimizer.   This is the basic process used for training the linear model. The rest of what’s in the loop is not necessarily needed, but it is nice to have. The first if statement is used to plot the predictions at set intervals to get an idea as to how the model is training as we iternate through the number of epochs. The second if statement is used to stop the training process once the model is prediction at some absolute error below a threshold. We can choose to let the model train for all epochs, but this is not really necessary if the model’s prediction is within an acceptable tolerance.  The predict function is used to make predictions on a given set of inputs. It’s important that tc.no_grad() is used because you do not need the model to keep track of the gradients since there will be no backpropagation. In this specific example, it is not an issue if the gradients are calculated, but when you get to more complex models that take in more data and need to tune more parameters (hence more gradients), calculating the gradients when not necessary can take up memory and computation time that may be needed for training or parameter tuning.  The following code calls the class:  epochs = 2000 lr = 0.01  # Linear layer for x my_ll = BuildLinearLayer([1, 1], lr) my_ll.train(t_norm, x_norm, epochs) x_ll_norm = my_ll.predict(t_norm) x_ll = inverse_gaussian_norm(x_ll_norm, x_std, x_mean)  # Prediction for x t_pred_norm = gaussian_norm(t_pred, t_std, t_mean) x_ll_pred_norm = my_ll.predict(t_pred_norm) x_ll_pred = inverse_gaussian_norm(x_ll_pred_norm, x_std, x_mean)  # Linear layer for y my_ll = BuildLinearLayer([2, 1], lr) my_ll.train(t_norm, y_norm, epochs) y_ll_norm = my_ll.predict(t_norm) y_ll = inverse_gaussian_norm(y_ll_norm, y_std, y_mean)  # Prediction for y t_pred_norm = gaussian_norm(t_pred, t_std, t_mean) y_ll_pred_norm = my_ll.predict(t_pred_norm) y_ll_pred = inverse_gaussian_norm(y_ll_pred_norm, y_std, y_mean)   We choose the number of epochs to be $2000$ and set the learning rate for the optimizer at $10^{-2}$. We will be training two linear layers, one for $x$ in terms of $t$ and one for $y$ in terms of $t$. As can be seen for $y$, we are setting the number of features going into the model to $\text{in_feature} = 2$ since we have $x$ and $x^2$ and both will need weights, and setting the number of features going out of the model to $\text{out_feature} = 1$ since only one $y$ value will be predicted per $x$ and $x^2$. In contrast, $x$ only needs $\text{in_feature} = 1$ since it has no $x^2$ term. As previously mentioned, we need to unnormalize the predictions since the output will be normalized. This process is done for both the $x$ and $y$ prediction.  Here are the results of the linear layer:    The upper plot shows the linear regression process for the $x$ position and the lower onefor the $y$ position. From the legend, we see that the true values that were used to pick the random times are given in yellow triangles, the true values for the times we are trying to predict are given by the brown line, the training values ($t_\text{rand}$) are given by the black x, the predicted position of the $t_\text{rand}$ values are given by blue dots, and the prediction for the new times are given by red dots. Similar to Scikit-learn’s LinearRegression(), the model does a good job of predicting the positions for the times we do not have data for since the predictions match up with the truth.  The following plot shows how the trajectory would look to a person watching the object being thrown.    Here are the absolute errors:    The overall mean square error (MSE) is on the order of $10^{-2}$, the same as LinearRegression() with the same conclusion. Lets compare the errors between Scikit-learn and PyTorch:    The upper plot shows the absolute error for both methods in $x$ and the bottom in $y$. The MSE is given in the bottom left corner of each plot, where LL is the linear layer and SKL is the scikit-learn implementation. We see that they are pretty much the same. In some cases LinearRegression() performs slightly better, in other cases nn.Linear() performs better. Overall, as previously mentioned, we are limited by the noise in the data so neither model can prediction at an accuracy below the noise floor.  The lingering question is probably, “Which should I use: Scikit-learn or PyTorch?” Let’s go over the differences between Scikit-learn’s LinearRegression and PyTorch’s Linear:  Scikit-learn pros:    Easy to use            From last week’s blog you can see that using LinearRegression() is very straightforward. All you need to do to train the model is call LinearRegression().fit(t, y).           Efficient, well-known solvers            The solvers used in LinearRegression() are efficient. Some examples are singular value decomposition (SVD) and Ordinary Least Squares (OLS).           Built-in tools            Scikit-learn has a lot of useful libraries that ready to use, such as preprocessing functions and cross-validation.           Scikit-learn cons:    Doesn’t generalize well            Most of the Scikit-learn implementations are meant for classical machine learning problems. If you want something you can customize and have more control over, Scikit-learn may not be what you need.           No GPU support            The models can only be trained on the CPU. While this is fine for small problems, training will become a huge bottleneck for bigger, more complicated problems you train on the CPU.           Scaling issues            Does not scale well for large data sets and deep learning architectures.            PyTorch pros:    Flexibility            You have much better control over your models and can include custom loss functions and optimization schemes. PyTorch is like a sandbox where you can try to figure out what combinations of loss functions, layers, and optimizers produce the best model for your dataset.           GPU support            Can push training to the GPU using CUDA.           No scaling issues            No issue with scaling to large data sets or more advanced deep learning architectures such as neural networks.           PyTorch cons:    Takes more effort            As can be seen from the code, setting up training using PyTorch is more work than with Scikit-learn. One must specify the optimizer, the loss function, the layers, etc.           Can be overkill for simple problems            As mentioned in the previous bulletpoint, the setup is more complicated than with Scikit-learn. This may not be ideal for simple problems.           Not as many built-in tools            There are no built-in libraries that take care of tasks needed for machine learning problems, such as preprocessing, metrics, etc.           Overall, Scikit-learn is a solid choice if one is solving classic problems with small to medium datasets and need an out-of-the-box solution. Additionally, it is great for learning the basics of machine learning. On the other hand, PyTorch is great for deep learning problems with large datasets since training can be moved over to the GPU and because of the allowed customization in building your model.  The code presented and plots displayed in the Linear Regression posts can be found on my Github under the linear-regression repo [1]. Feel free to reach out if you have any questions about what we covered this week. Next time, I will teach you about convolutional neural networks (CNNs). Stay tuned!  [1] Alberto J. Garcia, Linear Regression, 2025. Available at: https://github.com/AJG91/linear-regression. ⬅ Back to Home">
+
+
+
+
+
+
+
+  <meta property="article:published_time" content="2025-08-31T00:00:00-07:00">
+
+
+
+
+
+
+<link rel="canonical" href="https://ajg91.github.io//posts/machine-learning/linear-regression-with-pytorch/">
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- end _includes/seo.html -->
+
+
+
+  <link href="/feed.xml" type="application/atom+xml" rel="alternate" title="AJG's Homepage Feed">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+  
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css"></noscript>
+
+
+
+    <script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$','$$'], ['\\[','\\]']]
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
+  </head>
+
+  <body class="layout--single" dir="ltr">
+    <nav class="skip-links">
+  <ul>
+    <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
+    <li><a href="#main" class="screen-reader-shortcut">Skip to content</a></li>
+    <li><a href="#footer" class="screen-reader-shortcut">Skip to footer</a></li>
+  </ul>
+</nav>
+
+    
+
+<div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        
+        <a class="site-title" href="/">
+          AJG&#39;s Homepage
+          
+        </a>
+        <ul class="visible-links"><li class="masthead__menu-item">
+              <a
+                href="/posts/"
+                
+                
+              >Posts</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/publications/"
+                
+                
+              >Publications</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/talks/"
+                
+                
+              >Talks</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/software/"
+                
+                
+              >Software</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/contact/"
+                
+                
+              >Contact Me</a>
+            </li></ul>
+        
+        <button class="greedy-nav__toggle hidden" type="button">
+          <span class="visually-hidden">Toggle menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+
+    <div class="initial-content">
+      
+
+
+
+
+  
+    
+
+
+
+<nav class="breadcrumbs">
+  <ol itemscope itemtype="https://schema.org/BreadcrumbList">
+    
+    
+    
+      
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/" itemprop="item"><span itemprop="name">Home</span></a>
+
+          <meta itemprop="position" content="1" />
+        </li>
+        <span class="sep">/</span>
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/posts" itemprop="item"><span itemprop="name">Posts</span></a>
+          <meta itemprop="position" content="2" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/machine-learning" itemprop="item"><span itemprop="name">Machine learning</span></a>
+          <meta itemprop="position" content="3" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        <li class="current">Linear regression: Applying PyTorch to projectile motion example</li>
+      
+    
+  </ol>
+</nav>
+
+  
+
+
+<div id="main" role="main">
+  
+
+
+  <article class="page" itemscope itemtype="https://schema.org/CreativeWork">
+    <meta itemprop="headline" content="Linear regression: Applying PyTorch to projectile motion example">
+    <meta itemprop="description" content="August 31, 2025Last time, we went over how to apply linear regression to a problem using Scikit-learn. I showed the process and the results of Scikit-learn’s LinearRegression. In this post, I will show how to apply linear regression in Python using PyTorch. We will be using the same projectile motion example as before.We will be using the class torch.nn.Linear. Before we build the linear layer we need to normalize our data. It is standard practice to normalize the data whenever you use a model that performs backpropagation. This has various positive effects such as:  Improved learning          If the inputs are too large, the gradient descent will bounce around too much, which makes it difficult for the model to learn.      If the inputs are too small, the gradient descent will move too slow, which makes learning very slow.        Avoid exploding gradients          If the inputs are too large, this can lead to large gradients in backpropagation, which will hinder learning. This is known as the exploding gradient problem.      If the inputs are too small, this can lead to small gradients in backpropagation, which will also hinder learning. This is known as the vanishing gradient problem.        Faster convergence          By normalizing the input data, one creates a more well-conditioned loss surface, which allows the optimizer to take more efficient steps.      Leads to a faster and more efficient training stage.      Here is the process of normalizing the data:def gaussian_norm(x, std, mean):    return (x - mean) / stddef inverse_gaussian_norm(x, std, mean):    return x * std + meant_std, t_mean = tc.std(t_rand), tc.mean(t_rand)x_std, x_mean = tc.std(x), tc.mean(x)y_std, y_mean = tc.std(y), tc.mean(y)t_norm = gaussian_norm(t_rand, t_std, t_mean)x_norm = gaussian_norm(x, x_std, x_mean)y_norm = gaussian_norm(y, y_std, y_mean)Note:Since we are normalizing the inputs, the outputs will also be normalized. This means that after we make a prediction, we have to “unnormalize” the result. The function I use to do this is inverse_gaussian_norm().The following code is the class used to apply the linear layer to our data:class BuildLinearLayer():    def __init__(self, num_features, lr, bias=True):        self.model = nn.Linear(in_features=num_features[0],                                out_features=num_features[1],                                bias=bias)        self.loss_fn = nn.MSELoss()        self.optimizer = tc.optim.SGD(self.model.parameters(), lr=lr)    def concat_nonlinear(self, X):        return tc.cat([X, X**2], dim=1)            def train(self, X, y, epochs, atol=1e-8):        model = self.model        loss_fn = self.loss_fn        optimizer = self.optimizer                prev_loss = 0        if model.in_features &gt; 1:            X_feat = self.concat_nonlinear(X)        else:            X_feat = X                for i, epoch_i in enumerate(range(epochs)):            y_pred = model(X_feat)            loss = loss_fn(y_pred, y)                        optimizer.zero_grad()            loss.backward()            optimizer.step()                    if (i + 1) % 100 == 0:                print(f&#39;epoch = {i + 1}, loss = {loss}&#39;)                plot_true_vs_pred(X, y, tc.squeeze(y_pred).detach())                    if abs(prev_loss - loss) &lt; atol:                print(&#39;Training done&#39;)                print(f&#39;Epoch = {i + 1}, loss = {loss}&#39;)                print(f&#39;Residual: {abs(prev_loss - loss)} &lt; {atol}&#39;)                plot_true_vs_pred(X, y, tc.squeeze(y_pred).detach())                break                prev_loss = loss        return None                def predict(self, X):        model = self.model        if model.in_features &gt; 1:            X_feat = self.concat_nonlinear(X)        else:            X_feat = X                with tc.no_grad():                            y = model(X_feat)                    return tc.squeeze(y.detach())The linear layer is initialized in the constructor. We pass in the number of inputs, number of outputs, and whether or not it has a bias. In this case, adding a bias is ideal since we are trying to model a linear equation. We choose mean square error as our loss function and Stochastic Gradient Descent (SGD) as our optimizer with a learning rate that we initialize.The train function is where the model will be trained. First, we check the input size. Since the equations for $x$ and $y$ differ in powers of $t^2$, the input size will be different when initializing the linear layer (more on this later). If the input size is greater than $1$, we call concat_nonlinear() on the data to reshape the input variables (see the previous post).The training process is as follows:  Make a prediction using the input data.  Pass that prediction and the true values into the loss function.  Zero the gradients to get rid of older gradients.  Propagate the loss backwards through the model (backpropagation).  Step the optimizer.This is the basic process used for training the linear model. The rest of what’s in the loop is not necessarily needed, but it is nice to have. The first if statement is used to plot the predictions at set intervals to get an idea as to how the model is training as we iternate through the number of epochs. The second if statement is used to stop the training process once the model is prediction at some absolute error below a threshold. We can choose to let the model train for all epochs, but this is not really necessary if the model’s prediction is within an acceptable tolerance.The predict function is used to make predictions on a given set of inputs. It’s important that tc.no_grad() is used because you do not need the model to keep track of the gradients since there will be no backpropagation. In this specific example, it is not an issue if the gradients are calculated, but when you get to more complex models that take in more data and need to tune more parameters (hence more gradients), calculating the gradients when not necessary can take up memory and computation time that may be needed for training or parameter tuning.The following code calls the class:epochs = 2000lr = 0.01# Linear layer for xmy_ll = BuildLinearLayer([1, 1], lr)my_ll.train(t_norm, x_norm, epochs)x_ll_norm = my_ll.predict(t_norm)x_ll = inverse_gaussian_norm(x_ll_norm, x_std, x_mean)# Prediction for xt_pred_norm = gaussian_norm(t_pred, t_std, t_mean)x_ll_pred_norm = my_ll.predict(t_pred_norm)x_ll_pred = inverse_gaussian_norm(x_ll_pred_norm, x_std, x_mean)# Linear layer for ymy_ll = BuildLinearLayer([2, 1], lr)my_ll.train(t_norm, y_norm, epochs)y_ll_norm = my_ll.predict(t_norm)y_ll = inverse_gaussian_norm(y_ll_norm, y_std, y_mean)# Prediction for yt_pred_norm = gaussian_norm(t_pred, t_std, t_mean)y_ll_pred_norm = my_ll.predict(t_pred_norm)y_ll_pred = inverse_gaussian_norm(y_ll_pred_norm, y_std, y_mean)We choose the number of epochs to be $2000$ and set the learning rate for the optimizer at $10^{-2}$. We will be training two linear layers, one for $x$ in terms of $t$ and one for $y$ in terms of $t$. As can be seen for $y$, we are setting the number of features going into the model to $\text{in_feature} = 2$ since we have $x$ and $x^2$ and both will need weights, and setting the number of features going out of the model to $\text{out_feature} = 1$ since only one $y$ value will be predicted per $x$ and $x^2$. In contrast, $x$ only needs $\text{in_feature} = 1$ since it has no $x^2$ term. As previously mentioned, we need to unnormalize the predictions since the output will be normalized. This process is done for both the $x$ and $y$ prediction.Here are the results of the linear layer:The upper plot shows the linear regression process for the $x$ position and the lower onefor the $y$ position. From the legend, we see that the true values that were used to pick the random times are given in yellow triangles, the true values for the times we are trying to predict are given by the brown line, the training values ($t_\text{rand}$) are given by the black x, the predicted position of the $t_\text{rand}$ values are given by blue dots, and the prediction for the new times are given by red dots. Similar to Scikit-learn’s LinearRegression(), the model does a good job of predicting the positions for the times we do not have data for since the predictions match up with the truth.The following plot shows how the trajectory would look to a person watching the object being thrown.Here are the absolute errors:The overall mean square error (MSE) is on the order of $10^{-2}$, the same as LinearRegression() with the same conclusion. Lets compare the errors between Scikit-learn and PyTorch:The upper plot shows the absolute error for both methods in $x$ and the bottom in $y$. The MSE is given in the bottom left corner of each plot, where LL is the linear layer and SKL is the scikit-learn implementation. We see that they are pretty much the same. In some cases LinearRegression() performs slightly better, in other cases nn.Linear() performs better. Overall, as previously mentioned, we are limited by the noise in the data so neither model can prediction at an accuracy below the noise floor.The lingering question is probably, “Which should I use: Scikit-learn or PyTorch?” Let’s go over the differences between Scikit-learn’s LinearRegression and PyTorch’s Linear:Scikit-learn pros:  Easy to use          From last week’s blog you can see that using LinearRegression() is very straightforward. All you need to do to train the model is call LinearRegression().fit(t, y).        Efficient, well-known solvers          The solvers used in LinearRegression() are efficient. Some examples are singular value decomposition (SVD) and Ordinary Least Squares (OLS).        Built-in tools          Scikit-learn has a lot of useful libraries that ready to use, such as preprocessing functions and cross-validation.      Scikit-learn cons:  Doesn’t generalize well          Most of the Scikit-learn implementations are meant for classical machine learning problems. If you want something you can customize and have more control over, Scikit-learn may not be what you need.        No GPU support          The models can only be trained on the CPU. While this is fine for small problems, training will become a huge bottleneck for bigger, more complicated problems you train on the CPU.        Scaling issues          Does not scale well for large data sets and deep learning architectures.      PyTorch pros:  Flexibility          You have much better control over your models and can include custom loss functions and optimization schemes. PyTorch is like a sandbox where you can try to figure out what combinations of loss functions, layers, and optimizers produce the best model for your dataset.        GPU support          Can push training to the GPU using CUDA.        No scaling issues          No issue with scaling to large data sets or more advanced deep learning architectures such as neural networks.      PyTorch cons:  Takes more effort          As can be seen from the code, setting up training using PyTorch is more work than with Scikit-learn. One must specify the optimizer, the loss function, the layers, etc.        Can be overkill for simple problems          As mentioned in the previous bulletpoint, the setup is more complicated than with Scikit-learn. This may not be ideal for simple problems.        Not as many built-in tools          There are no built-in libraries that take care of tasks needed for machine learning problems, such as preprocessing, metrics, etc.      Overall, Scikit-learn is a solid choice if one is solving classic problems with small to medium datasets and need an out-of-the-box solution. Additionally, it is great for learning the basics of machine learning. On the other hand, PyTorch is great for deep learning problems with large datasets since training can be moved over to the GPU and because of the allowed customization in building your model.The code presented and plots displayed in the Linear Regression posts can be found on my Github under the linear-regression repo [1]. Feel free to reach out if you have any questions about what we covered this week. Next time, I will teach you about convolutional neural networks (CNNs). Stay tuned![1] Alberto J. Garcia, Linear Regression, 2025. Available at: https://github.com/AJG91/linear-regression.⬅ Back to Home">
+    <meta itemprop="datePublished" content="2025-08-31T00:00:00-07:00">
+    
+
+    <div class="page__inner-wrap">
+      
+        <header>
+          <h1 id="page-title" class="page__title" itemprop="headline">
+            <a href="https://ajg91.github.io//posts/machine-learning/linear-regression-with-pytorch/" itemprop="url">Linear regression: Applying PyTorch to projectile motion example
+</a>
+          </h1>
+          
+
+
+        </header>
+      
+
+      <section class="page__content" itemprop="text">
+        
+        <p class="post-date">August 31, 2025</p>
+
+<p>Last time, we went over how to apply linear regression to a problem using Scikit-learn. I showed the process and the results of Scikit-learn’s LinearRegression. In this post, I will show how to apply linear regression in Python using PyTorch. We will be using the same projectile motion example as before.</p>
+
+<p>We will be using the class <code class="language-plaintext highlighter-rouge">torch.nn.Linear</code>. Before we build the linear layer we need to normalize our data. It is standard practice to normalize the data whenever you use a model that performs backpropagation. This has various positive effects such as:</p>
+
+<ol>
+  <li>Improved learning<br />
+    <ul>
+      <li>If the inputs are too large, the gradient descent will bounce around too much, which makes it difficult for the model to learn.<br /></li>
+      <li>If the inputs are too small, the gradient descent will move too slow, which makes learning very slow.<br /></li>
+    </ul>
+  </li>
+  <li>Avoid exploding gradients<br />
+    <ul>
+      <li>If the inputs are too large, this can lead to large gradients in backpropagation, which will hinder learning. This is known as the exploding gradient problem.<br /></li>
+      <li>If the inputs are too small, this can lead to small gradients in backpropagation, which will also hinder learning. This is known as the vanishing gradient problem.<br /></li>
+    </ul>
+  </li>
+  <li>Faster convergence<br />
+    <ul>
+      <li>By normalizing the input data, one creates a more well-conditioned loss surface, which allows the optimizer to take more efficient steps.<br /></li>
+      <li>Leads to a faster and more efficient training stage.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>Here is the process of normalizing the data:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">gaussian_norm</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">std</span><span class="p">,</span> <span class="n">mean</span><span class="p">):</span>
+    <span class="nf">return </span><span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">mean</span><span class="p">)</span> <span class="o">/</span> <span class="n">std</span>
+
+<span class="k">def</span> <span class="nf">inverse_gaussian_norm</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">std</span><span class="p">,</span> <span class="n">mean</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="n">std</span> <span class="o">+</span> <span class="n">mean</span>
+
+<span class="n">t_std</span><span class="p">,</span> <span class="n">t_mean</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">std</span><span class="p">(</span><span class="n">t_rand</span><span class="p">),</span> <span class="n">tc</span><span class="p">.</span><span class="nf">mean</span><span class="p">(</span><span class="n">t_rand</span><span class="p">)</span>
+<span class="n">x_std</span><span class="p">,</span> <span class="n">x_mean</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">std</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">tc</span><span class="p">.</span><span class="nf">mean</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">y_std</span><span class="p">,</span> <span class="n">y_mean</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="nf">std</span><span class="p">(</span><span class="n">y</span><span class="p">),</span> <span class="n">tc</span><span class="p">.</span><span class="nf">mean</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+
+<span class="n">t_norm</span> <span class="o">=</span> <span class="nf">gaussian_norm</span><span class="p">(</span><span class="n">t_rand</span><span class="p">,</span> <span class="n">t_std</span><span class="p">,</span> <span class="n">t_mean</span><span class="p">)</span>
+<span class="n">x_norm</span> <span class="o">=</span> <span class="nf">gaussian_norm</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">x_std</span><span class="p">,</span> <span class="n">x_mean</span><span class="p">)</span>
+<span class="n">y_norm</span> <span class="o">=</span> <span class="nf">gaussian_norm</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">y_std</span><span class="p">,</span> <span class="n">y_mean</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Note:<br />
+Since we are normalizing the inputs, the outputs will also be normalized. This means that after we make a prediction, we have to “unnormalize” the result. The function I use to do this is <code class="language-plaintext highlighter-rouge">inverse_gaussian_norm()</code>.</p>
+
+<p>The following code is the class used to apply the linear layer to our data:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">BuildLinearLayer</span><span class="p">():</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">num_features</span><span class="p">,</span> <span class="n">lr</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">nn</span><span class="p">.</span><span class="nc">Linear</span><span class="p">(</span><span class="n">in_features</span><span class="o">=</span><span class="n">num_features</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> 
+                               <span class="n">out_features</span><span class="o">=</span><span class="n">num_features</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> 
+                               <span class="n">bias</span><span class="o">=</span><span class="n">bias</span><span class="p">)</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">loss_fn</span> <span class="o">=</span> <span class="n">nn</span><span class="p">.</span><span class="nc">MSELoss</span><span class="p">()</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">optimizer</span> <span class="o">=</span> <span class="n">tc</span><span class="p">.</span><span class="n">optim</span><span class="p">.</span><span class="nc">SGD</span><span class="p">(</span><span class="n">self</span><span class="p">.</span><span class="n">model</span><span class="p">.</span><span class="nf">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="n">lr</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">concat_nonlinear</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">X</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">tc</span><span class="p">.</span><span class="nf">cat</span><span class="p">([</span><span class="n">X</span><span class="p">,</span> <span class="n">X</span><span class="o">**</span><span class="mi">2</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        
+    <span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">epochs</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-8</span><span class="p">):</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">model</span>
+        <span class="n">loss_fn</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">loss_fn</span>
+        <span class="n">optimizer</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">optimizer</span>
+        
+        <span class="n">prev_loss</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="k">if</span> <span class="n">model</span><span class="p">.</span><span class="n">in_features</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">X_feat</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">concat_nonlinear</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">X_feat</span> <span class="o">=</span> <span class="n">X</span>
+        
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">epoch_i</span> <span class="ow">in</span> <span class="nf">enumerate</span><span class="p">(</span><span class="nf">range</span><span class="p">(</span><span class="n">epochs</span><span class="p">)):</span>
+            <span class="n">y_pred</span> <span class="o">=</span> <span class="nf">model</span><span class="p">(</span><span class="n">X_feat</span><span class="p">)</span>
+            <span class="n">loss</span> <span class="o">=</span> <span class="nf">loss_fn</span><span class="p">(</span><span class="n">y_pred</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+            
+            <span class="n">optimizer</span><span class="p">.</span><span class="nf">zero_grad</span><span class="p">()</span>
+            <span class="n">loss</span><span class="p">.</span><span class="nf">backward</span><span class="p">()</span>
+            <span class="n">optimizer</span><span class="p">.</span><span class="nf">step</span><span class="p">()</span>
+        
+            <span class="nf">if </span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="mi">100</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="nf">print</span><span class="p">(</span><span class="sa">f</span><span class="sh">'</span><span class="s">epoch = </span><span class="si">{</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="si">}</span><span class="s">, loss = </span><span class="si">{</span><span class="n">loss</span><span class="si">}</span><span class="sh">'</span><span class="p">)</span>
+                <span class="nf">plot_true_vs_pred</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">tc</span><span class="p">.</span><span class="nf">squeeze</span><span class="p">(</span><span class="n">y_pred</span><span class="p">).</span><span class="nf">detach</span><span class="p">())</span>
+        
+            <span class="k">if</span> <span class="nf">abs</span><span class="p">(</span><span class="n">prev_loss</span> <span class="o">-</span> <span class="n">loss</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">atol</span><span class="p">:</span>
+                <span class="nf">print</span><span class="p">(</span><span class="sh">'</span><span class="s">Training done</span><span class="sh">'</span><span class="p">)</span>
+                <span class="nf">print</span><span class="p">(</span><span class="sa">f</span><span class="sh">'</span><span class="s">Epoch = </span><span class="si">{</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="si">}</span><span class="s">, loss = </span><span class="si">{</span><span class="n">loss</span><span class="si">}</span><span class="sh">'</span><span class="p">)</span>
+                <span class="nf">print</span><span class="p">(</span><span class="sa">f</span><span class="sh">'</span><span class="s">Residual: </span><span class="si">{</span><span class="nf">abs</span><span class="p">(</span><span class="n">prev_loss</span> <span class="o">-</span> <span class="n">loss</span><span class="p">)</span><span class="si">}</span><span class="s"> &lt; </span><span class="si">{</span><span class="n">atol</span><span class="si">}</span><span class="sh">'</span><span class="p">)</span>
+                <span class="nf">plot_true_vs_pred</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">tc</span><span class="p">.</span><span class="nf">squeeze</span><span class="p">(</span><span class="n">y_pred</span><span class="p">).</span><span class="nf">detach</span><span class="p">())</span>
+                <span class="k">break</span>
+    
+            <span class="n">prev_loss</span> <span class="o">=</span> <span class="n">loss</span>
+
+        <span class="k">return</span> <span class="bp">None</span>
+            
+    <span class="k">def</span> <span class="nf">predict</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">X</span><span class="p">):</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">model</span>
+
+        <span class="k">if</span> <span class="n">model</span><span class="p">.</span><span class="n">in_features</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">X_feat</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">concat_nonlinear</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">X_feat</span> <span class="o">=</span> <span class="n">X</span>
+        
+        <span class="k">with</span> <span class="n">tc</span><span class="p">.</span><span class="nf">no_grad</span><span class="p">():</span>                
+            <span class="n">y</span> <span class="o">=</span> <span class="nf">model</span><span class="p">(</span><span class="n">X_feat</span><span class="p">)</span>
+            
+        <span class="k">return</span> <span class="n">tc</span><span class="p">.</span><span class="nf">squeeze</span><span class="p">(</span><span class="n">y</span><span class="p">.</span><span class="nf">detach</span><span class="p">())</span>
+</code></pre></div></div>
+
+<p>The linear layer is initialized in the constructor. We pass in the number of inputs, number of outputs, and whether or not it has a bias. In this case, adding a bias is ideal since we are trying to model a linear equation. We choose mean square error as our loss function and Stochastic Gradient Descent (SGD) as our optimizer with a learning rate that we initialize.</p>
+
+<p>The train function is where the model will be trained. First, we check the input size. Since the equations for $x$ and $y$ differ in powers of $t^2$, the input size will be different when initializing the linear layer (more on this later). If the input size is greater than $1$, we call <code class="language-plaintext highlighter-rouge">concat_nonlinear()</code> on the data to reshape the input variables (see the previous post).</p>
+
+<p>The training process is as follows:<br /></p>
+<ol>
+  <li>Make a prediction using the input data.<br /></li>
+  <li>Pass that prediction and the true values into the loss function.<br /></li>
+  <li>Zero the gradients to get rid of older gradients.<br /></li>
+  <li>Propagate the loss backwards through the model (backpropagation).<br /></li>
+  <li>Step the optimizer.</li>
+</ol>
+
+<p>This is the basic process used for training the linear model. The rest of what’s in the loop is not necessarily needed, but it is nice to have. The first if statement is used to plot the predictions at set intervals to get an idea as to how the model is training as we iternate through the number of epochs. The second if statement is used to stop the training process once the model is prediction at some absolute error below a threshold. We can choose to let the model train for all epochs, but this is not really necessary if the model’s prediction is within an acceptable tolerance.</p>
+
+<p>The predict function is used to make predictions on a given set of inputs. It’s important that <code class="language-plaintext highlighter-rouge">tc.no_grad()</code> is used because you do not need the model to keep track of the gradients since there will be no backpropagation. In this specific example, it is not an issue if the gradients are calculated, but when you get to more complex models that take in more data and need to tune more parameters (hence more gradients), calculating the gradients when not necessary can take up memory and computation time that may be needed for training or parameter tuning.</p>
+
+<p>The following code calls the class:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">epochs</span> <span class="o">=</span> <span class="mi">2000</span>
+<span class="n">lr</span> <span class="o">=</span> <span class="mf">0.01</span>
+
+<span class="c1"># Linear layer for x
+</span><span class="n">my_ll</span> <span class="o">=</span> <span class="nc">BuildLinearLayer</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">lr</span><span class="p">)</span>
+<span class="n">my_ll</span><span class="p">.</span><span class="nf">train</span><span class="p">(</span><span class="n">t_norm</span><span class="p">,</span> <span class="n">x_norm</span><span class="p">,</span> <span class="n">epochs</span><span class="p">)</span>
+<span class="n">x_ll_norm</span> <span class="o">=</span> <span class="n">my_ll</span><span class="p">.</span><span class="nf">predict</span><span class="p">(</span><span class="n">t_norm</span><span class="p">)</span>
+<span class="n">x_ll</span> <span class="o">=</span> <span class="nf">inverse_gaussian_norm</span><span class="p">(</span><span class="n">x_ll_norm</span><span class="p">,</span> <span class="n">x_std</span><span class="p">,</span> <span class="n">x_mean</span><span class="p">)</span>
+
+<span class="c1"># Prediction for x
+</span><span class="n">t_pred_norm</span> <span class="o">=</span> <span class="nf">gaussian_norm</span><span class="p">(</span><span class="n">t_pred</span><span class="p">,</span> <span class="n">t_std</span><span class="p">,</span> <span class="n">t_mean</span><span class="p">)</span>
+<span class="n">x_ll_pred_norm</span> <span class="o">=</span> <span class="n">my_ll</span><span class="p">.</span><span class="nf">predict</span><span class="p">(</span><span class="n">t_pred_norm</span><span class="p">)</span>
+<span class="n">x_ll_pred</span> <span class="o">=</span> <span class="nf">inverse_gaussian_norm</span><span class="p">(</span><span class="n">x_ll_pred_norm</span><span class="p">,</span> <span class="n">x_std</span><span class="p">,</span> <span class="n">x_mean</span><span class="p">)</span>
+
+<span class="c1"># Linear layer for y
+</span><span class="n">my_ll</span> <span class="o">=</span> <span class="nc">BuildLinearLayer</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">lr</span><span class="p">)</span>
+<span class="n">my_ll</span><span class="p">.</span><span class="nf">train</span><span class="p">(</span><span class="n">t_norm</span><span class="p">,</span> <span class="n">y_norm</span><span class="p">,</span> <span class="n">epochs</span><span class="p">)</span>
+<span class="n">y_ll_norm</span> <span class="o">=</span> <span class="n">my_ll</span><span class="p">.</span><span class="nf">predict</span><span class="p">(</span><span class="n">t_norm</span><span class="p">)</span>
+<span class="n">y_ll</span> <span class="o">=</span> <span class="nf">inverse_gaussian_norm</span><span class="p">(</span><span class="n">y_ll_norm</span><span class="p">,</span> <span class="n">y_std</span><span class="p">,</span> <span class="n">y_mean</span><span class="p">)</span>
+
+<span class="c1"># Prediction for y
+</span><span class="n">t_pred_norm</span> <span class="o">=</span> <span class="nf">gaussian_norm</span><span class="p">(</span><span class="n">t_pred</span><span class="p">,</span> <span class="n">t_std</span><span class="p">,</span> <span class="n">t_mean</span><span class="p">)</span>
+<span class="n">y_ll_pred_norm</span> <span class="o">=</span> <span class="n">my_ll</span><span class="p">.</span><span class="nf">predict</span><span class="p">(</span><span class="n">t_pred_norm</span><span class="p">)</span>
+<span class="n">y_ll_pred</span> <span class="o">=</span> <span class="nf">inverse_gaussian_norm</span><span class="p">(</span><span class="n">y_ll_pred_norm</span><span class="p">,</span> <span class="n">y_std</span><span class="p">,</span> <span class="n">y_mean</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>We choose the number of epochs to be $2000$ and set the learning rate for the optimizer at $10^{-2}$. We will be training two linear layers, one for $x$ in terms of $t$ and one for $y$ in terms of $t$. As can be seen for $y$, we are setting the number of features going into the model to $\text{in_feature} = 2$ since we have $x$ and $x^2$ and both will need weights, and setting the number of features going out of the model to $\text{out_feature} = 1$ since only one $y$ value will be predicted per $x$ and $x^2$. In contrast, $x$ only needs $\text{in_feature} = 1$ since it has no $x^2$ term. As previously mentioned, we need to unnormalize the predictions since the output will be normalized. This process is done for both the $x$ and $y$ prediction.</p>
+
+<p>Here are the results of the linear layer:</p>
+
+<p><img src="/assets/images/linear_regression/linear_reg_ll.png" alt="lr_ll" /></p>
+
+<p>The upper plot shows the linear regression process for the $x$ position and the lower onefor the $y$ position. From the legend, we see that the true values that were used to pick the random times are given in yellow triangles, the true values for the times we are trying to predict are given by the brown line, the training values ($t_\text{rand}$) are given by the black x, the predicted position of the $t_\text{rand}$ values are given by blue dots, and the prediction for the new times are given by red dots. Similar to Scikit-learn’s <code class="language-plaintext highlighter-rouge">LinearRegression()</code>, the model does a good job of predicting the positions for the times we do not have data for since the predictions match up with the truth.</p>
+
+<p>The following plot shows how the trajectory would look to a person watching the object being thrown.</p>
+
+<p><img src="/assets/images/linear_regression/linear_reg_ll_y_vs_x.png" alt="lr_ll_y_vs_x" /></p>
+
+<p>Here are the absolute errors:</p>
+
+<p><img src="/assets/images/linear_regression/linear_reg_abs_err_ll.png" alt="lr_ll_abs_err" /></p>
+
+<p>The overall mean square error (MSE) is on the order of $10^{-2}$, the same as <code class="language-plaintext highlighter-rouge">LinearRegression()</code> with the same conclusion. Lets compare the errors between Scikit-learn and PyTorch:</p>
+
+<p><img src="/assets/images/linear_regression/linear_reg_abs_err_both.png" alt="lr_skl_ll_abs_err" /></p>
+
+<p>The upper plot shows the absolute error for both methods in $x$ and the bottom in $y$. The MSE is given in the bottom left corner of each plot, where LL is the linear layer and SKL is the scikit-learn implementation. We see that they are pretty much the same. In some cases <code class="language-plaintext highlighter-rouge">LinearRegression()</code> performs slightly better, in other cases <code class="language-plaintext highlighter-rouge">nn.Linear()</code> performs better. Overall, as previously mentioned, we are limited by the noise in the data so neither model can prediction at an accuracy below the noise floor.</p>
+
+<p>The lingering question is probably, “Which should I use: Scikit-learn or PyTorch?” Let’s go over the differences between Scikit-learn’s LinearRegression and PyTorch’s Linear:<br /></p>
+
+<p>Scikit-learn pros:</p>
+<ol>
+  <li>Easy to use<br />
+    <ul>
+      <li>From last week’s blog you can see that using <code class="language-plaintext highlighter-rouge">LinearRegression()</code> is very straightforward. All you need to do to train the model is call <code class="language-plaintext highlighter-rouge">LinearRegression().fit(t, y)</code>.<br /></li>
+    </ul>
+  </li>
+  <li>Efficient, well-known solvers<br />
+    <ul>
+      <li>The solvers used in <code class="language-plaintext highlighter-rouge">LinearRegression()</code> are efficient. Some examples are singular value decomposition (SVD) and Ordinary Least Squares (OLS).<br /></li>
+    </ul>
+  </li>
+  <li>Built-in tools<br />
+    <ul>
+      <li>Scikit-learn has a lot of useful libraries that ready to use, such as preprocessing functions and cross-validation.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>Scikit-learn cons:</p>
+<ol>
+  <li>Doesn’t generalize well<br />
+    <ul>
+      <li>Most of the Scikit-learn implementations are meant for classical machine learning problems. If you want something you can customize and have more control over, Scikit-learn may not be what you need.<br /></li>
+    </ul>
+  </li>
+  <li>No GPU support<br />
+    <ul>
+      <li>The models can only be trained on the CPU. While this is fine for small problems, training will become a huge bottleneck for bigger, more complicated problems you train on the CPU.</li>
+    </ul>
+  </li>
+  <li>Scaling issues<br />
+    <ul>
+      <li>Does not scale well for large data sets and deep learning architectures.</li>
+    </ul>
+  </li>
+</ol>
+
+<p><br />
+PyTorch pros:</p>
+<ol>
+  <li>Flexibility<br />
+    <ul>
+      <li>You have much better control over your models and can include custom loss functions and optimization schemes. PyTorch is like a sandbox where you can try to figure out what combinations of loss functions, layers, and optimizers produce the best model for your dataset.</li>
+    </ul>
+  </li>
+  <li>GPU support<br />
+    <ul>
+      <li>Can push training to the GPU using CUDA.</li>
+    </ul>
+  </li>
+  <li>No scaling issues<br />
+    <ul>
+      <li>No issue with scaling to large data sets or more advanced deep learning architectures such as neural networks.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>PyTorch cons:</p>
+<ol>
+  <li>Takes more effort<br />
+    <ul>
+      <li>As can be seen from the code, setting up training using PyTorch is more work than with Scikit-learn. One must specify the optimizer, the loss function, the layers, etc.</li>
+    </ul>
+  </li>
+  <li>Can be overkill for simple problems<br />
+    <ul>
+      <li>As mentioned in the previous bulletpoint, the setup is more complicated than with Scikit-learn. This may not be ideal for simple problems.</li>
+    </ul>
+  </li>
+  <li>Not as many built-in tools<br />
+    <ul>
+      <li>There are no built-in libraries that take care of tasks needed for machine learning problems, such as preprocessing, metrics, etc.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>Overall, Scikit-learn is a solid choice if one is solving classic problems with small to medium datasets and need an out-of-the-box solution. Additionally, it is great for learning the basics of machine learning. On the other hand, PyTorch is great for deep learning problems with large datasets since training can be moved over to the GPU and because of the allowed customization in building your model.</p>
+
+<p>The code presented and plots displayed in the Linear Regression posts can be found on my Github under the <a href="https://github.com/AJG91/linear-regression" title="linear-regression-repo">linear-regression</a> repo <a class="citation" href="#Garcia2025LinearRegression">[1]</a>. Feel free to reach out if you have any questions about what we covered this week. Next time, I will teach you about convolutional neural networks (CNNs). Stay tuned!</p>
+
+<ol class="bibliography"><li><span id="Garcia2025LinearRegression">[1] Alberto J. Garcia, <i>Linear Regression</i>, 2025. Available at: https://github.com/AJG91/linear-regression.</span></li></ol>
+<p><a href="/" class="btn">⬅ Back to Home</a></p>
+
+        
+      </section>
+
+      <footer class="page__meta">
+        
+        
+
+
+        
+
+  <p class="page__date"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Updated:</strong> <time class="dt-published" datetime="2025-08-31T00:00:00-07:00">August 31, 2025</time></p>
+
+      </footer>
+
+      
+
+      
+  <nav class="pagination">
+    
+      <a href="/posts/machine-learning/linear-regression-with-scikit-learn/" class="pagination--pager" title="Linear regression: Applying Scikit-learn to projectile motion example">Previous</a>
+    
+    
+      <a href="/posts/machine-learning/convolutional-neural-network-with-mnist-dataset/" class="pagination--pager" title="Convolutional neural networks: MNIST dataset">Next</a>
+    
+  </nav>
+
+
+    </div>
+
+    
+  </article>
+
+  
+  
+</div>
+
+      
+    </div>
+
+    
+
+    <div id="footer" class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        
+
+<div class="page__footer-follow">
+  <ul class="social-icons">
+    
+
+    
+
+    
+      <li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+    
+  </ul>
+</div>
+
+
+<div class="page__footer-copyright">&copy; 2026 <a href="https://ajg91.github.io/">AJG&#39;s Homepage</a>. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/jekyll-themes/minimal-mistakes/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+
+  </body>
+</html>

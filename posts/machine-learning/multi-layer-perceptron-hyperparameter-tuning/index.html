@@ -1,0 +1,586 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.27.3 by Michael Rose
+  Copyright 2013-2025 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE
+-->
+
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin _includes/seo.html --><title>Multi-layer perceptron: Hyperparameter tuning - AJG’s Homepage</title>
+<meta name="description" content="October 12, 2025  This week we will learn about how to build a multi-layer perceptron (MLP), as well as hyperparameter tuning and debugging the model. Some information may be duplicate from previous posts, but I will go over it again to keep the posts on MLPs self-contained.  What is a multi-layer perceptron (MLP)? A MLP is a artificial feedforward neural network that consists on multiple layers including an input layer, hidden layers (at least one), and an output layer. The layers are fully connected, which means that each neuron in layer a is connected to each neuron in layer b. Each connection is assigned a weight and each neuron a bias.  There are two phases when training a MLP: forward propagation and backward propagation. During forward propagation, the data flows from the input layer, through all the intermediate layers, and finally through the output layer with each layer processing the outputs of the previous one. The output is then compared to the truth and the error is calculated. During backpropagation, the error flows backwards through the layers, adjusting the weights and biases using techniques such as gradient descent, which tries to find the combinations of weights and bias that minimize the error. Once this process finishes for all weights and biases, the model will once again switch to forward propagation.  We will be using the California housing dataset we discussed last week to train and evaluate our model. This dataset contains aggregated data regarding each district in California such as median income, population, and location (latitude and longitude). For more information see this post.  Since we already went over the dataset in the last post, we can jump straight into the model and experiments. Our model class contains the following constructor (minus the docstring):  class MLP(nn.Module):     def __init__(self, input_dim, hidden_dim, dropout):         super().__init__()         self.net = nn.Sequential(             nn.Linear(input_dim, hidden_dim),             nn.ReLU(),             nn.Dropout(dropout),             nn.Linear(hidden_dim, hidden_dim),             nn.ReLU(),             nn.Linear(hidden_dim, 1),         )   Let’s break it down:    nn.Sequential            This simplies building a neural network by organizing the layers in a sequential order. In other words, the network knows that it has to flow sequentially through the layers in the order defined.           nn.Linear(input_dim, hidden_dim)            This is a fully connected linear layer with input size input_dim (output of CNN) and output size of hidden_dim neurons.           nn.ReLU()            This is a Rectified Linear Unit activation function. It is defined as $\text{ReLU}(x) = \text{max}(0, x)$. Essentially, it zeros out the negative values while introducing non-linearity. This type of activation function is simple and fast to use compared to others such as $\text{tanh}(x)$ or sigmoid.           nn.Dropout()            This randomly turns off neurons (equivalent to zeroing out some inputs), forcing the network to learn more general features instead of relying solely on specific neurons.           nn.Linear(hidden_dim, hidden_dim)            This is another fully connected linear layer, but now the input size is hidden_dim and the output size is hidden_dim. This implies this is an intermediate layer.           nn.ReLU()            Same as before.           nn.Linear(hidden_dim, 1)            This is another fully connected linear layer, but now the input size is input_dim and the output size is $1$, which means we want to predict one scalar output per input.           As we can see, the model is pretty straightforward. I purposely made the hidden_dim and dropout variables because we will be varying this when tuning hyperparameters.  Training the model over $15$ epochs gives us the following:    This plot shows how the Huber loss function varies over epochs in the training and validation phase. I used the Huber loss function as a metric because it is less sensitive to outliers when compared to the Mean Square Error. It is quadratic at small distances and linear for larger values.  The overall structure of the plot mostly looks good. Both the training and validation decrease as the model is trained. The only issue is with the higher epochs, where the curves end up crossing. This indicates that the model is most likely overfitting. You don’t want the validation metric to start cross the training metric since this implies that the model is no longer generalizing.  We can in fact check where the model started overfitting by looking in the “metrics_output.log” file generated at each run. This is the latter part of the file:  Epoch 11: New best model at epoch 11 (val_loss=0.2057) Train - Huber: 0.2138, R2-score: 0.6054 Validation - Huber: 0.2057, R2-score: 0.6258  Epoch 12: New best model at epoch 12 (val_loss=0.2023) Train - Huber: 0.2071, R2-score: 0.6200 Validation - Huber: 0.2023, R2-score: 0.6355  Epoch 13: Train - Huber: 0.2019, R2-score: 0.6317 Validation - Huber: 0.2024, R2-score: 0.6378  Epoch 14: New best model at epoch 14 (val_loss=0.2007) Train - Huber: 0.1977, R2-score: 0.6416 Validation - Huber: 0.2007, R2-score: 0.6443  Epoch 15: Train - Huber: 0.1939, R2-score: 0.6510 Validation - Huber: 0.2013, R2-score: 0.6450  Test - Huber: 0.2135, R2-score: 0.6071   Looking in this file, we see assume that the model started overfitting around epoch $13$ since this was the first instance of no new best model recorded. The solution would be to train the model for $12$ epochs instead of $15$. Essentially, the model will see the data less so it will not be able to overfit on the features. You can also include something like early stopping so that the training stops when the loss is no longer changing above some tolerance. Another technique is to use a scheduler to change the learning rate (or other hyperparameters) at scheduled intervals. This will help improve how your model generalizes.    This next plot shows the $R^2$ score, which measures how well a regression model describes the variability of the target variable. In other words, it tells you how much of the variation in the target variable is explained by the inputs. This quantity is useful because it tells you how much of the variance in the predicted value is explained by the features or is just random noise. This value is bounded between $[-1, 1]$. Generally, a $R^2$ score closer to $1$ implies a better-fitting model. On the other hand, a value close to $0$ means that the model is not learning any of the patterns in the dataset, but can still output the average. On the opposite end of the spectrum, a score closer to $-1$ indicates a model that is doing worse than predicting the average. In fact, it is learning all the wrong things. In this case, the $R^2$ score appears to be close to $1$ so we can infer that the model is making well-informed predictions.  The results plots above are obtained by running the “base” model. The parameters used here are:  { &quot;model_version&quot;: &quot;baseline&quot;, &quot;epochs&quot;: 15, &quot;learning_rate&quot;: 0.0001, &quot;hidden_dim&quot;: 64, &quot;dropout&quot;: 0.0 }   and can be found in .../experiments/base_model/params.json.  We can now check the logs generated when the code is ran once. In this case, the code generates a file called “grad_norm_output.log” located in .../experiments/base_model/. This file has information of what the gradient norm was across different layers at each epoch. For example:  Epoch: 11, grad_norm/net.0.weight: 0.2753058969974518 Epoch: 11, grad_norm/net.0.bias: 0.0689358115196228 Epoch: 11, grad_norm/net.3.weight: 0.27505698800086975 Epoch: 11, grad_norm/net.3.bias: 0.035825666040182114 Epoch: 11, grad_norm/net.5.weight: 0.33901259303092957 Epoch: 11, grad_norm/net.5.bias: 0.024257883429527283 Epoch: 11, grad_norm/total: 0.5224971771240234  Epoch: 12, grad_norm/net.0.weight: 0.2417425960302353 Epoch: 12, grad_norm/net.0.bias: 0.0713915303349495 Epoch: 12, grad_norm/net.3.weight: 0.22586220502853394 Epoch: 12, grad_norm/net.3.bias: 0.037096235901117325 Epoch: 12, grad_norm/net.5.weight: 0.281486839056015 Epoch: 12, grad_norm/net.5.bias: 0.041641950607299805 Epoch: 12, grad_norm/total: 0.4437284767627716   Gradient norm checking is used to verify that the gradients calculated during backpropagation make sense. If the gradients are too small, the model is either not efficiently learning or not learning at all. If they are too big, you have the exploding gradients problem. In general, the gradients should be between $10^{-2}-10$. Anything below or above this threshold indicates issues with the model. In the example above, we can see that the values look to be in the range mentioned, so our model should be okay.  This does not always tell you if there are issues with the model. The gradient norms can look fine, but the model may not be working correctly. But if the gradient norms do not look fine, you know there is something wrong.  Another thing that you will see in the folder .../experiments/base_model/ is a checkpoints folder. This folder contains the last five epochs worth of models, as well as the model with the best validation metrics. This is useful when trying to resume training the model after initial trainings have already been done. In general, this is good practice to develop since you don’t have to retrain large models if you get more data or if you want to experiment with the model at a later time.  Now we can move on to hyperparameter tuning. In this case, we will be using a grid search approach where we define a set of hyperparameters and values that we want to vary, create a mesh over all the values, and use this mesh to train different models with these hyperparameters. While efficient, this method tends to be slow. This is fine in our case since we will only be tuning a handful of hyperparameters over a limited set of values. In this case, we will be forming a grid for the learning rate, hidden dimension, and dropout rate using the following:  vary_lr = [0.01, 0.001, 0.0001] vary_hidden_dim = [32, 64, 128] vary_dropout = [0.0, 0.3, 0.6]  prms_product = list(product(vary_lr, vary_hidden_dim, vary_dropout))   The list prms_product contains combinations of these hyperparameters. Like before, the models of the last five epochs are being saved, as well as the model that performed the best on the validation set. We also log the metrics and the gradient norms over the different epochs. We will now see the results of a subset of different models trained with these hyerparameters.  First example: params #2: (0.01, 32, 0.3)      Just looking at the plots we can tell that these hyperparameters are not a good choice. While the training loss looks decent, the validation loss does not decrease as we increase the number of epochs. This implies that the model is not learning the dataset.  Second example: params #12: (0.001, 32, 0.6)      While the loss may look good, the validation loss also crossed over the training loss. While we can just stop training early, the loss curves do not decay as nicely as the base model.  Third example: params #20: (0.0001, 32, 0.3)      These loss curves look better than the previous two and there is no crossing of the loss. The model seems to be slowly learning over time since there is not a sharp drop in the loss. The $R^2$ score also increases and levels out nicely. These hyperparameters are a good choice. Let’s take a closer look at the metrics outputs:  Epoch 13: New best model at epoch 13 (val_loss=0.2799) Train - Huber: 0.3321, R2-score: 0.2695 Validation - Huber: 0.2799, R2-score: 0.4258  Epoch 14: New best model at epoch 14 (val_loss=0.2703) Train - Huber: 0.3234, R2-score: 0.2608 Validation - Huber: 0.2703, R2-score: 0.4506  Epoch 15: New best model at epoch 15 (val_loss=0.2622) Train - Huber: 0.3156, R2-score: 0.3327 Validation - Huber: 0.2622, R2-score: 0.4720  Test - Huber: 0.3395, R2-score: -10.3754   The metrics outputs seem fine, but the $R^2$ score on the test dataset is $-10.375$. Not only is it negative, but it is beyond the range we mentioned earlier in the post. If they do not perform well on the test dataset, they may not be a good choice.  Fourth example: params #26: (0.0001, 128, 0.3)      These loss curves also look really nice. It seems that the model learns quickly at first with these hyperparamters, then does not change as much with increasing epochs. The $R^2$ score also increases and levels out similar to the third example. These hyperparameters are also a good choice. Let’s take a closer look at the metrics outputs:  Epoch 13: New best model at epoch 13 (val_loss=0.1993) Train - Huber: 0.2310, R2-score: 0.5754 Validation - Huber: 0.1993, R2-score: 0.6467  Epoch 14: Train - Huber: 0.2255, R2-score: 0.5897 Validation - Huber: 0.2010, R2-score: 0.6438  Epoch 15: Train - Huber: 0.2251, R2-score: 0.5873 Validation - Huber: 0.1999, R2-score: 0.6470  Test - Huber: 0.2179, R2-score: 0.3668   The model seems to be performing well with the test set so these hyperparameters seem to be a good choice.  At first glance, the last two examples appear to be good choices and may be better than our initial base model. If we then check how well the model performs in the test phase, we see that the third example does not perform well on the new data. On the other hand, the fourth example outputs a decent $R^2$ score and loss, so we would choose this set of hyperparameters.  We also display a table with all the results:  |         Model          | Validation loss | Test loss | Test R2-score | | ---------------------- | --------------- | --------- | ------------- | |       base_model       |    0.200688     | 0.213490  |   0.607139    | | lr0.001_hdim128_do0.0  |    0.216196     | 0.610909  |   -0.554772   | |  lr0.001_hdim32_do0.3  |    0.205734     | 0.313990  |   0.435274    | | lr0.0001_hdim128_do0.6 |    0.215220     | 0.243275  |   -0.366992   | | lr0.001_hdim128_do0.6  |    0.199085     | 0.375953  |   -0.558818   | | lr0.0001_hdim32_do0.3  |    0.262168     | 0.339538  |  -10.375393   | | lr0.0001_hdim32_do0.6  |    0.294543     | 0.387825  |  -14.893430   | | lr0.0001_hdim128_do0.3 |    0.199262     | 0.217917  |   0.366839    | | lr0.0001_hdim32_do0.0  |    0.236734     | 0.313647  |   -9.647883   | |  lr0.001_hdim32_do0.0  |    0.226325     | 0.479087  |   -0.094879   | | lr0.001_hdim128_do0.3  |    0.211276     | 0.545321  |   -0.268541   | |  lr0.01_hdim128_do0.6  |    0.238816     | 0.413160  |   0.192252    | |  lr0.01_hdim128_do0.0  |    0.340562     | 0.796216  |   -1.484344   | |  lr0.01_hdim64_do0.6   |    0.263552     | 0.396611  |   0.212692    | |  lr0.01_hdim32_do0.0   |    0.371635     | 0.866089  |   -1.596811   | |  lr0.01_hdim128_do0.3  |    0.299062     | 0.650552  |   -0.698870   | |  lr0.001_hdim32_do0.6  |    0.199160     | 0.269113  |   0.536666    | |  lr0.001_hdim64_do0.6  |    0.196005     | 0.351168  |   0.295199    | | lr0.0001_hdim64_do0.3  |    0.227803     | 0.253033  |   -0.336243   | | lr0.0001_hdim64_do0.6  |    0.246033     | 0.315547  |   -8.151037   | | lr0.0001_hdim128_do0.0 |    0.184923     | 0.203477  |   0.591489    | | lr0.0001_hdim64_do0.0  |    0.210855     | 0.221721  |   0.612034    | |  lr0.001_hdim64_do0.3  |    0.205427     | 0.478154  |   -0.110683   | |  lr0.001_hdim64_do0.0  |    0.194936     | 0.580364  |   -0.837558   | |  lr0.01_hdim64_do0.0   |    0.295101     | 0.704713  |   -0.920688   | |  lr0.01_hdim32_do0.6   |    0.232968     | 0.288357  |   0.498615    | |  lr0.01_hdim32_do0.3   |    0.286834     | 0.489060  |   -0.104738   | |  lr0.01_hdim64_do0.3   |    0.240279     | 0.565656  |   -0.386141   |   This table shows a summary of the results of the hyperparameter tuning. The table contains the model name, the validation loss, test loss, and test $R^2$ score for the base model and all the combinations of hyperparameters.  Overall, we can use hyperparameter tuning to figure out what is the best combination of values we can use to get a well-performing model. In this post I showed the basics, but there are other hyperparameters that can be tuned, such as batch size, number of hidden layers, and optimizer momentum. In addition, one can also use techniques such as random search when working with large number of values or hyperparameter, or Bayesian optimization when evaluating the model is computationally time-consuming. When there are issues with the model, we can use gradient norm checking to get a better understanding of the behavior of the gradients across all layers and epochs. This may not always be useful, but its another tool one can use to check performance.  The code presented and plots displayed in this and the previous post can be found on my Github under the build-mlp repo [1]. Feel free to reach out if you have any questions about what we covered this week. I will take a break the next few weeks and come back with natural language processing examples. Stay tuned!  [1] Alberto J. Garcia, Build MLP, 2025. Available at: https://github.com/AJG91/build-mlp. ⬅ Back to Home">
+
+
+
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="AJG&#39;s Homepage">
+<meta property="og:title" content="Multi-layer perceptron: Hyperparameter tuning">
+<meta property="og:url" content="https://ajg91.github.io//posts/machine-learning/multi-layer-perceptron-hyperparameter-tuning/">
+
+
+  <meta property="og:description" content="October 12, 2025  This week we will learn about how to build a multi-layer perceptron (MLP), as well as hyperparameter tuning and debugging the model. Some information may be duplicate from previous posts, but I will go over it again to keep the posts on MLPs self-contained.  What is a multi-layer perceptron (MLP)? A MLP is a artificial feedforward neural network that consists on multiple layers including an input layer, hidden layers (at least one), and an output layer. The layers are fully connected, which means that each neuron in layer a is connected to each neuron in layer b. Each connection is assigned a weight and each neuron a bias.  There are two phases when training a MLP: forward propagation and backward propagation. During forward propagation, the data flows from the input layer, through all the intermediate layers, and finally through the output layer with each layer processing the outputs of the previous one. The output is then compared to the truth and the error is calculated. During backpropagation, the error flows backwards through the layers, adjusting the weights and biases using techniques such as gradient descent, which tries to find the combinations of weights and bias that minimize the error. Once this process finishes for all weights and biases, the model will once again switch to forward propagation.  We will be using the California housing dataset we discussed last week to train and evaluate our model. This dataset contains aggregated data regarding each district in California such as median income, population, and location (latitude and longitude). For more information see this post.  Since we already went over the dataset in the last post, we can jump straight into the model and experiments. Our model class contains the following constructor (minus the docstring):  class MLP(nn.Module):     def __init__(self, input_dim, hidden_dim, dropout):         super().__init__()         self.net = nn.Sequential(             nn.Linear(input_dim, hidden_dim),             nn.ReLU(),             nn.Dropout(dropout),             nn.Linear(hidden_dim, hidden_dim),             nn.ReLU(),             nn.Linear(hidden_dim, 1),         )   Let’s break it down:    nn.Sequential            This simplies building a neural network by organizing the layers in a sequential order. In other words, the network knows that it has to flow sequentially through the layers in the order defined.           nn.Linear(input_dim, hidden_dim)            This is a fully connected linear layer with input size input_dim (output of CNN) and output size of hidden_dim neurons.           nn.ReLU()            This is a Rectified Linear Unit activation function. It is defined as $\text{ReLU}(x) = \text{max}(0, x)$. Essentially, it zeros out the negative values while introducing non-linearity. This type of activation function is simple and fast to use compared to others such as $\text{tanh}(x)$ or sigmoid.           nn.Dropout()            This randomly turns off neurons (equivalent to zeroing out some inputs), forcing the network to learn more general features instead of relying solely on specific neurons.           nn.Linear(hidden_dim, hidden_dim)            This is another fully connected linear layer, but now the input size is hidden_dim and the output size is hidden_dim. This implies this is an intermediate layer.           nn.ReLU()            Same as before.           nn.Linear(hidden_dim, 1)            This is another fully connected linear layer, but now the input size is input_dim and the output size is $1$, which means we want to predict one scalar output per input.           As we can see, the model is pretty straightforward. I purposely made the hidden_dim and dropout variables because we will be varying this when tuning hyperparameters.  Training the model over $15$ epochs gives us the following:    This plot shows how the Huber loss function varies over epochs in the training and validation phase. I used the Huber loss function as a metric because it is less sensitive to outliers when compared to the Mean Square Error. It is quadratic at small distances and linear for larger values.  The overall structure of the plot mostly looks good. Both the training and validation decrease as the model is trained. The only issue is with the higher epochs, where the curves end up crossing. This indicates that the model is most likely overfitting. You don’t want the validation metric to start cross the training metric since this implies that the model is no longer generalizing.  We can in fact check where the model started overfitting by looking in the “metrics_output.log” file generated at each run. This is the latter part of the file:  Epoch 11: New best model at epoch 11 (val_loss=0.2057) Train - Huber: 0.2138, R2-score: 0.6054 Validation - Huber: 0.2057, R2-score: 0.6258  Epoch 12: New best model at epoch 12 (val_loss=0.2023) Train - Huber: 0.2071, R2-score: 0.6200 Validation - Huber: 0.2023, R2-score: 0.6355  Epoch 13: Train - Huber: 0.2019, R2-score: 0.6317 Validation - Huber: 0.2024, R2-score: 0.6378  Epoch 14: New best model at epoch 14 (val_loss=0.2007) Train - Huber: 0.1977, R2-score: 0.6416 Validation - Huber: 0.2007, R2-score: 0.6443  Epoch 15: Train - Huber: 0.1939, R2-score: 0.6510 Validation - Huber: 0.2013, R2-score: 0.6450  Test - Huber: 0.2135, R2-score: 0.6071   Looking in this file, we see assume that the model started overfitting around epoch $13$ since this was the first instance of no new best model recorded. The solution would be to train the model for $12$ epochs instead of $15$. Essentially, the model will see the data less so it will not be able to overfit on the features. You can also include something like early stopping so that the training stops when the loss is no longer changing above some tolerance. Another technique is to use a scheduler to change the learning rate (or other hyperparameters) at scheduled intervals. This will help improve how your model generalizes.    This next plot shows the $R^2$ score, which measures how well a regression model describes the variability of the target variable. In other words, it tells you how much of the variation in the target variable is explained by the inputs. This quantity is useful because it tells you how much of the variance in the predicted value is explained by the features or is just random noise. This value is bounded between $[-1, 1]$. Generally, a $R^2$ score closer to $1$ implies a better-fitting model. On the other hand, a value close to $0$ means that the model is not learning any of the patterns in the dataset, but can still output the average. On the opposite end of the spectrum, a score closer to $-1$ indicates a model that is doing worse than predicting the average. In fact, it is learning all the wrong things. In this case, the $R^2$ score appears to be close to $1$ so we can infer that the model is making well-informed predictions.  The results plots above are obtained by running the “base” model. The parameters used here are:  { &quot;model_version&quot;: &quot;baseline&quot;, &quot;epochs&quot;: 15, &quot;learning_rate&quot;: 0.0001, &quot;hidden_dim&quot;: 64, &quot;dropout&quot;: 0.0 }   and can be found in .../experiments/base_model/params.json.  We can now check the logs generated when the code is ran once. In this case, the code generates a file called “grad_norm_output.log” located in .../experiments/base_model/. This file has information of what the gradient norm was across different layers at each epoch. For example:  Epoch: 11, grad_norm/net.0.weight: 0.2753058969974518 Epoch: 11, grad_norm/net.0.bias: 0.0689358115196228 Epoch: 11, grad_norm/net.3.weight: 0.27505698800086975 Epoch: 11, grad_norm/net.3.bias: 0.035825666040182114 Epoch: 11, grad_norm/net.5.weight: 0.33901259303092957 Epoch: 11, grad_norm/net.5.bias: 0.024257883429527283 Epoch: 11, grad_norm/total: 0.5224971771240234  Epoch: 12, grad_norm/net.0.weight: 0.2417425960302353 Epoch: 12, grad_norm/net.0.bias: 0.0713915303349495 Epoch: 12, grad_norm/net.3.weight: 0.22586220502853394 Epoch: 12, grad_norm/net.3.bias: 0.037096235901117325 Epoch: 12, grad_norm/net.5.weight: 0.281486839056015 Epoch: 12, grad_norm/net.5.bias: 0.041641950607299805 Epoch: 12, grad_norm/total: 0.4437284767627716   Gradient norm checking is used to verify that the gradients calculated during backpropagation make sense. If the gradients are too small, the model is either not efficiently learning or not learning at all. If they are too big, you have the exploding gradients problem. In general, the gradients should be between $10^{-2}-10$. Anything below or above this threshold indicates issues with the model. In the example above, we can see that the values look to be in the range mentioned, so our model should be okay.  This does not always tell you if there are issues with the model. The gradient norms can look fine, but the model may not be working correctly. But if the gradient norms do not look fine, you know there is something wrong.  Another thing that you will see in the folder .../experiments/base_model/ is a checkpoints folder. This folder contains the last five epochs worth of models, as well as the model with the best validation metrics. This is useful when trying to resume training the model after initial trainings have already been done. In general, this is good practice to develop since you don’t have to retrain large models if you get more data or if you want to experiment with the model at a later time.  Now we can move on to hyperparameter tuning. In this case, we will be using a grid search approach where we define a set of hyperparameters and values that we want to vary, create a mesh over all the values, and use this mesh to train different models with these hyperparameters. While efficient, this method tends to be slow. This is fine in our case since we will only be tuning a handful of hyperparameters over a limited set of values. In this case, we will be forming a grid for the learning rate, hidden dimension, and dropout rate using the following:  vary_lr = [0.01, 0.001, 0.0001] vary_hidden_dim = [32, 64, 128] vary_dropout = [0.0, 0.3, 0.6]  prms_product = list(product(vary_lr, vary_hidden_dim, vary_dropout))   The list prms_product contains combinations of these hyperparameters. Like before, the models of the last five epochs are being saved, as well as the model that performed the best on the validation set. We also log the metrics and the gradient norms over the different epochs. We will now see the results of a subset of different models trained with these hyerparameters.  First example: params #2: (0.01, 32, 0.3)      Just looking at the plots we can tell that these hyperparameters are not a good choice. While the training loss looks decent, the validation loss does not decrease as we increase the number of epochs. This implies that the model is not learning the dataset.  Second example: params #12: (0.001, 32, 0.6)      While the loss may look good, the validation loss also crossed over the training loss. While we can just stop training early, the loss curves do not decay as nicely as the base model.  Third example: params #20: (0.0001, 32, 0.3)      These loss curves look better than the previous two and there is no crossing of the loss. The model seems to be slowly learning over time since there is not a sharp drop in the loss. The $R^2$ score also increases and levels out nicely. These hyperparameters are a good choice. Let’s take a closer look at the metrics outputs:  Epoch 13: New best model at epoch 13 (val_loss=0.2799) Train - Huber: 0.3321, R2-score: 0.2695 Validation - Huber: 0.2799, R2-score: 0.4258  Epoch 14: New best model at epoch 14 (val_loss=0.2703) Train - Huber: 0.3234, R2-score: 0.2608 Validation - Huber: 0.2703, R2-score: 0.4506  Epoch 15: New best model at epoch 15 (val_loss=0.2622) Train - Huber: 0.3156, R2-score: 0.3327 Validation - Huber: 0.2622, R2-score: 0.4720  Test - Huber: 0.3395, R2-score: -10.3754   The metrics outputs seem fine, but the $R^2$ score on the test dataset is $-10.375$. Not only is it negative, but it is beyond the range we mentioned earlier in the post. If they do not perform well on the test dataset, they may not be a good choice.  Fourth example: params #26: (0.0001, 128, 0.3)      These loss curves also look really nice. It seems that the model learns quickly at first with these hyperparamters, then does not change as much with increasing epochs. The $R^2$ score also increases and levels out similar to the third example. These hyperparameters are also a good choice. Let’s take a closer look at the metrics outputs:  Epoch 13: New best model at epoch 13 (val_loss=0.1993) Train - Huber: 0.2310, R2-score: 0.5754 Validation - Huber: 0.1993, R2-score: 0.6467  Epoch 14: Train - Huber: 0.2255, R2-score: 0.5897 Validation - Huber: 0.2010, R2-score: 0.6438  Epoch 15: Train - Huber: 0.2251, R2-score: 0.5873 Validation - Huber: 0.1999, R2-score: 0.6470  Test - Huber: 0.2179, R2-score: 0.3668   The model seems to be performing well with the test set so these hyperparameters seem to be a good choice.  At first glance, the last two examples appear to be good choices and may be better than our initial base model. If we then check how well the model performs in the test phase, we see that the third example does not perform well on the new data. On the other hand, the fourth example outputs a decent $R^2$ score and loss, so we would choose this set of hyperparameters.  We also display a table with all the results:  |         Model          | Validation loss | Test loss | Test R2-score | | ---------------------- | --------------- | --------- | ------------- | |       base_model       |    0.200688     | 0.213490  |   0.607139    | | lr0.001_hdim128_do0.0  |    0.216196     | 0.610909  |   -0.554772   | |  lr0.001_hdim32_do0.3  |    0.205734     | 0.313990  |   0.435274    | | lr0.0001_hdim128_do0.6 |    0.215220     | 0.243275  |   -0.366992   | | lr0.001_hdim128_do0.6  |    0.199085     | 0.375953  |   -0.558818   | | lr0.0001_hdim32_do0.3  |    0.262168     | 0.339538  |  -10.375393   | | lr0.0001_hdim32_do0.6  |    0.294543     | 0.387825  |  -14.893430   | | lr0.0001_hdim128_do0.3 |    0.199262     | 0.217917  |   0.366839    | | lr0.0001_hdim32_do0.0  |    0.236734     | 0.313647  |   -9.647883   | |  lr0.001_hdim32_do0.0  |    0.226325     | 0.479087  |   -0.094879   | | lr0.001_hdim128_do0.3  |    0.211276     | 0.545321  |   -0.268541   | |  lr0.01_hdim128_do0.6  |    0.238816     | 0.413160  |   0.192252    | |  lr0.01_hdim128_do0.0  |    0.340562     | 0.796216  |   -1.484344   | |  lr0.01_hdim64_do0.6   |    0.263552     | 0.396611  |   0.212692    | |  lr0.01_hdim32_do0.0   |    0.371635     | 0.866089  |   -1.596811   | |  lr0.01_hdim128_do0.3  |    0.299062     | 0.650552  |   -0.698870   | |  lr0.001_hdim32_do0.6  |    0.199160     | 0.269113  |   0.536666    | |  lr0.001_hdim64_do0.6  |    0.196005     | 0.351168  |   0.295199    | | lr0.0001_hdim64_do0.3  |    0.227803     | 0.253033  |   -0.336243   | | lr0.0001_hdim64_do0.6  |    0.246033     | 0.315547  |   -8.151037   | | lr0.0001_hdim128_do0.0 |    0.184923     | 0.203477  |   0.591489    | | lr0.0001_hdim64_do0.0  |    0.210855     | 0.221721  |   0.612034    | |  lr0.001_hdim64_do0.3  |    0.205427     | 0.478154  |   -0.110683   | |  lr0.001_hdim64_do0.0  |    0.194936     | 0.580364  |   -0.837558   | |  lr0.01_hdim64_do0.0   |    0.295101     | 0.704713  |   -0.920688   | |  lr0.01_hdim32_do0.6   |    0.232968     | 0.288357  |   0.498615    | |  lr0.01_hdim32_do0.3   |    0.286834     | 0.489060  |   -0.104738   | |  lr0.01_hdim64_do0.3   |    0.240279     | 0.565656  |   -0.386141   |   This table shows a summary of the results of the hyperparameter tuning. The table contains the model name, the validation loss, test loss, and test $R^2$ score for the base model and all the combinations of hyperparameters.  Overall, we can use hyperparameter tuning to figure out what is the best combination of values we can use to get a well-performing model. In this post I showed the basics, but there are other hyperparameters that can be tuned, such as batch size, number of hidden layers, and optimizer momentum. In addition, one can also use techniques such as random search when working with large number of values or hyperparameter, or Bayesian optimization when evaluating the model is computationally time-consuming. When there are issues with the model, we can use gradient norm checking to get a better understanding of the behavior of the gradients across all layers and epochs. This may not always be useful, but its another tool one can use to check performance.  The code presented and plots displayed in this and the previous post can be found on my Github under the build-mlp repo [1]. Feel free to reach out if you have any questions about what we covered this week. I will take a break the next few weeks and come back with natural language processing examples. Stay tuned!  [1] Alberto J. Garcia, Build MLP, 2025. Available at: https://github.com/AJG91/build-mlp. ⬅ Back to Home">
+
+
+
+
+
+
+
+  <meta property="article:published_time" content="2025-10-12T00:00:00-07:00">
+
+
+
+
+
+
+<link rel="canonical" href="https://ajg91.github.io//posts/machine-learning/multi-layer-perceptron-hyperparameter-tuning/">
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- end _includes/seo.html -->
+
+
+
+  <link href="/feed.xml" type="application/atom+xml" rel="alternate" title="AJG's Homepage Feed">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+  
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css"></noscript>
+
+
+
+    <script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$','$$'], ['\\[','\\]']]
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
+  </head>
+
+  <body class="layout--single" dir="ltr">
+    <nav class="skip-links">
+  <ul>
+    <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
+    <li><a href="#main" class="screen-reader-shortcut">Skip to content</a></li>
+    <li><a href="#footer" class="screen-reader-shortcut">Skip to footer</a></li>
+  </ul>
+</nav>
+
+    
+
+<div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        
+        <a class="site-title" href="/">
+          AJG&#39;s Homepage
+          
+        </a>
+        <ul class="visible-links"><li class="masthead__menu-item">
+              <a
+                href="/posts/"
+                
+                
+              >Posts</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/publications/"
+                
+                
+              >Publications</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/talks/"
+                
+                
+              >Talks</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/software/"
+                
+                
+              >Software</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/contact/"
+                
+                
+              >Contact Me</a>
+            </li></ul>
+        
+        <button class="greedy-nav__toggle hidden" type="button">
+          <span class="visually-hidden">Toggle menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+
+    <div class="initial-content">
+      
+
+
+
+
+  
+    
+
+
+
+<nav class="breadcrumbs">
+  <ol itemscope itemtype="https://schema.org/BreadcrumbList">
+    
+    
+    
+      
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/" itemprop="item"><span itemprop="name">Home</span></a>
+
+          <meta itemprop="position" content="1" />
+        </li>
+        <span class="sep">/</span>
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/posts" itemprop="item"><span itemprop="name">Posts</span></a>
+          <meta itemprop="position" content="2" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/machine-learning" itemprop="item"><span itemprop="name">Machine learning</span></a>
+          <meta itemprop="position" content="3" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        <li class="current">Multi-layer perceptron: Hyperparameter tuning</li>
+      
+    
+  </ol>
+</nav>
+
+  
+
+
+<div id="main" role="main">
+  
+
+
+  <article class="page" itemscope itemtype="https://schema.org/CreativeWork">
+    <meta itemprop="headline" content="Multi-layer perceptron: Hyperparameter tuning">
+    <meta itemprop="description" content="October 12, 2025This week we will learn about how to build a multi-layer perceptron (MLP), as well as hyperparameter tuning and debugging the model. Some information may be duplicate from previous posts, but I will go over it again to keep the posts on MLPs self-contained.What is a multi-layer perceptron (MLP)?A MLP is a artificial feedforward neural network that consists on multiple layers including an input layer, hidden layers (at least one), and an output layer. The layers are fully connected, which means that each neuron in layer a is connected to each neuron in layer b. Each connection is assigned a weight and each neuron a bias.There are two phases when training a MLP: forward propagation and backward propagation. During forward propagation, the data flows from the input layer, through all the intermediate layers, and finally through the output layer with each layer processing the outputs of the previous one. The output is then compared to the truth and the error is calculated. During backpropagation, the error flows backwards through the layers, adjusting the weights and biases using techniques such as gradient descent, which tries to find the combinations of weights and bias that minimize the error. Once this process finishes for all weights and biases, the model will once again switch to forward propagation.We will be using the California housing dataset we discussed last week to train and evaluate our model. This dataset contains aggregated data regarding each district in California such as median income, population, and location (latitude and longitude). For more information see this post.Since we already went over the dataset in the last post, we can jump straight into the model and experiments. Our model class contains the following constructor (minus the docstring):class MLP(nn.Module):    def __init__(self, input_dim, hidden_dim, dropout):        super().__init__()        self.net = nn.Sequential(            nn.Linear(input_dim, hidden_dim),            nn.ReLU(),            nn.Dropout(dropout),            nn.Linear(hidden_dim, hidden_dim),            nn.ReLU(),            nn.Linear(hidden_dim, 1),        )Let’s break it down:  nn.Sequential          This simplies building a neural network by organizing the layers in a sequential order. In other words, the network knows that it has to flow sequentially through the layers in the order defined.        nn.Linear(input_dim, hidden_dim)          This is a fully connected linear layer with input size input_dim (output of CNN) and output size of hidden_dim neurons.        nn.ReLU()          This is a Rectified Linear Unit activation function. It is defined as $\text{ReLU}(x) = \text{max}(0, x)$. Essentially, it zeros out the negative values while introducing non-linearity. This type of activation function is simple and fast to use compared to others such as $\text{tanh}(x)$ or sigmoid.        nn.Dropout()          This randomly turns off neurons (equivalent to zeroing out some inputs), forcing the network to learn more general features instead of relying solely on specific neurons.        nn.Linear(hidden_dim, hidden_dim)          This is another fully connected linear layer, but now the input size is hidden_dim and the output size is hidden_dim. This implies this is an intermediate layer.        nn.ReLU()          Same as before.        nn.Linear(hidden_dim, 1)          This is another fully connected linear layer, but now the input size is input_dim and the output size is $1$, which means we want to predict one scalar output per input.      As we can see, the model is pretty straightforward. I purposely made the hidden_dim and dropout variables because we will be varying this when tuning hyperparameters.Training the model over $15$ epochs gives us the following:This plot shows how the Huber loss function varies over epochs in the training and validation phase. I used the Huber loss function as a metric because it is less sensitive to outliers when compared to the Mean Square Error. It is quadratic at small distances and linear for larger values.The overall structure of the plot mostly looks good. Both the training and validation decrease as the model is trained. The only issue is with the higher epochs, where the curves end up crossing. This indicates that the model is most likely overfitting. You don’t want the validation metric to start cross the training metric since this implies that the model is no longer generalizing.We can in fact check where the model started overfitting by looking in the “metrics_output.log” file generated at each run. This is the latter part of the file:Epoch 11:New best model at epoch 11 (val_loss=0.2057)Train - Huber: 0.2138, R2-score: 0.6054Validation - Huber: 0.2057, R2-score: 0.6258Epoch 12:New best model at epoch 12 (val_loss=0.2023)Train - Huber: 0.2071, R2-score: 0.6200Validation - Huber: 0.2023, R2-score: 0.6355Epoch 13:Train - Huber: 0.2019, R2-score: 0.6317Validation - Huber: 0.2024, R2-score: 0.6378Epoch 14:New best model at epoch 14 (val_loss=0.2007)Train - Huber: 0.1977, R2-score: 0.6416Validation - Huber: 0.2007, R2-score: 0.6443Epoch 15:Train - Huber: 0.1939, R2-score: 0.6510Validation - Huber: 0.2013, R2-score: 0.6450Test - Huber: 0.2135, R2-score: 0.6071Looking in this file, we see assume that the model started overfitting around epoch $13$ since this was the first instance of no new best model recorded. The solution would be to train the model for $12$ epochs instead of $15$. Essentially, the model will see the data less so it will not be able to overfit on the features. You can also include something like early stopping so that the training stops when the loss is no longer changing above some tolerance. Another technique is to use a scheduler to change the learning rate (or other hyperparameters) at scheduled intervals. This will help improve how your model generalizes.This next plot shows the $R^2$ score, which measures how well a regression model describes the variability of the target variable. In other words, it tells you how much of the variation in the target variable is explained by the inputs. This quantity is useful because it tells you how much of the variance in the predicted value is explained by the features or is just random noise. This value is bounded between $[-1, 1]$. Generally, a $R^2$ score closer to $1$ implies a better-fitting model. On the other hand, a value close to $0$ means that the model is not learning any of the patterns in the dataset, but can still output the average. On the opposite end of the spectrum, a score closer to $-1$ indicates a model that is doing worse than predicting the average. In fact, it is learning all the wrong things. In this case, the $R^2$ score appears to be close to $1$ so we can infer that the model is making well-informed predictions.The results plots above are obtained by running the “base” model. The parameters used here are:{&quot;model_version&quot;: &quot;baseline&quot;,&quot;epochs&quot;: 15,&quot;learning_rate&quot;: 0.0001,&quot;hidden_dim&quot;: 64,&quot;dropout&quot;: 0.0}and can be found in .../experiments/base_model/params.json.We can now check the logs generated when the code is ran once. In this case, the code generates a file called “grad_norm_output.log” located in .../experiments/base_model/. This file has information of what the gradient norm was across different layers at each epoch. For example:Epoch: 11, grad_norm/net.0.weight: 0.2753058969974518Epoch: 11, grad_norm/net.0.bias: 0.0689358115196228Epoch: 11, grad_norm/net.3.weight: 0.27505698800086975Epoch: 11, grad_norm/net.3.bias: 0.035825666040182114Epoch: 11, grad_norm/net.5.weight: 0.33901259303092957Epoch: 11, grad_norm/net.5.bias: 0.024257883429527283Epoch: 11, grad_norm/total: 0.5224971771240234Epoch: 12, grad_norm/net.0.weight: 0.2417425960302353Epoch: 12, grad_norm/net.0.bias: 0.0713915303349495Epoch: 12, grad_norm/net.3.weight: 0.22586220502853394Epoch: 12, grad_norm/net.3.bias: 0.037096235901117325Epoch: 12, grad_norm/net.5.weight: 0.281486839056015Epoch: 12, grad_norm/net.5.bias: 0.041641950607299805Epoch: 12, grad_norm/total: 0.4437284767627716Gradient norm checking is used to verify that the gradients calculated during backpropagation make sense. If the gradients are too small, the model is either not efficiently learning or not learning at all. If they are too big, you have the exploding gradients problem. In general, the gradients should be between $10^{-2}-10$. Anything below or above this threshold indicates issues with the model. In the example above, we can see that the values look to be in the range mentioned, so our model should be okay.This does not always tell you if there are issues with the model. The gradient norms can look fine, but the model may not be working correctly. But if the gradient norms do not look fine, you know there is something wrong.Another thing that you will see in the folder .../experiments/base_model/ is a checkpoints folder. This folder contains the last five epochs worth of models, as well as the model with the best validation metrics. This is useful when trying to resume training the model after initial trainings have already been done. In general, this is good practice to develop since you don’t have to retrain large models if you get more data or if you want to experiment with the model at a later time.Now we can move on to hyperparameter tuning. In this case, we will be using a grid search approach where we define a set of hyperparameters and values that we want to vary, create a mesh over all the values, and use this mesh to train different models with these hyperparameters. While efficient, this method tends to be slow. This is fine in our case since we will only be tuning a handful of hyperparameters over a limited set of values. In this case, we will be forming a grid for the learning rate, hidden dimension, and dropout rate using the following:vary_lr = [0.01, 0.001, 0.0001]vary_hidden_dim = [32, 64, 128]vary_dropout = [0.0, 0.3, 0.6]prms_product = list(product(vary_lr, vary_hidden_dim, vary_dropout))The list prms_product contains combinations of these hyperparameters. Like before, the models of the last five epochs are being saved, as well as the model that performed the best on the validation set. We also log the metrics and the gradient norms over the different epochs. We will now see the results of a subset of different models trained with these hyerparameters.First example:params #2: (0.01, 32, 0.3)Just looking at the plots we can tell that these hyperparameters are not a good choice. While the training loss looks decent, the validation loss does not decrease as we increase the number of epochs. This implies that the model is not learning the dataset.Second example:params #12: (0.001, 32, 0.6)While the loss may look good, the validation loss also crossed over the training loss. While we can just stop training early, the loss curves do not decay as nicely as the base model.Third example:params #20: (0.0001, 32, 0.3)These loss curves look better than the previous two and there is no crossing of the loss. The model seems to be slowly learning over time since there is not a sharp drop in the loss. The $R^2$ score also increases and levels out nicely. These hyperparameters are a good choice. Let’s take a closer look at the metrics outputs:Epoch 13:New best model at epoch 13 (val_loss=0.2799)Train - Huber: 0.3321, R2-score: 0.2695Validation - Huber: 0.2799, R2-score: 0.4258Epoch 14:New best model at epoch 14 (val_loss=0.2703)Train - Huber: 0.3234, R2-score: 0.2608Validation - Huber: 0.2703, R2-score: 0.4506Epoch 15:New best model at epoch 15 (val_loss=0.2622)Train - Huber: 0.3156, R2-score: 0.3327Validation - Huber: 0.2622, R2-score: 0.4720Test - Huber: 0.3395, R2-score: -10.3754The metrics outputs seem fine, but the $R^2$ score on the test dataset is $-10.375$. Not only is it negative, but it is beyond the range we mentioned earlier in the post. If they do not perform well on the test dataset, they may not be a good choice.Fourth example:params #26: (0.0001, 128, 0.3)These loss curves also look really nice. It seems that the model learns quickly at first with these hyperparamters, then does not change as much with increasing epochs. The $R^2$ score also increases and levels out similar to the third example. These hyperparameters are also a good choice. Let’s take a closer look at the metrics outputs:Epoch 13:New best model at epoch 13 (val_loss=0.1993)Train - Huber: 0.2310, R2-score: 0.5754Validation - Huber: 0.1993, R2-score: 0.6467Epoch 14:Train - Huber: 0.2255, R2-score: 0.5897Validation - Huber: 0.2010, R2-score: 0.6438Epoch 15:Train - Huber: 0.2251, R2-score: 0.5873Validation - Huber: 0.1999, R2-score: 0.6470Test - Huber: 0.2179, R2-score: 0.3668The model seems to be performing well with the test set so these hyperparameters seem to be a good choice.At first glance, the last two examples appear to be good choices and may be better than our initial base model. If we then check how well the model performs in the test phase, we see that the third example does not perform well on the new data. On the other hand, the fourth example outputs a decent $R^2$ score and loss, so we would choose this set of hyperparameters.We also display a table with all the results:|         Model          | Validation loss | Test loss | Test R2-score || ---------------------- | --------------- | --------- | ------------- ||       base_model       |    0.200688     | 0.213490  |   0.607139    || lr0.001_hdim128_do0.0  |    0.216196     | 0.610909  |   -0.554772   ||  lr0.001_hdim32_do0.3  |    0.205734     | 0.313990  |   0.435274    || lr0.0001_hdim128_do0.6 |    0.215220     | 0.243275  |   -0.366992   || lr0.001_hdim128_do0.6  |    0.199085     | 0.375953  |   -0.558818   || lr0.0001_hdim32_do0.3  |    0.262168     | 0.339538  |  -10.375393   || lr0.0001_hdim32_do0.6  |    0.294543     | 0.387825  |  -14.893430   || lr0.0001_hdim128_do0.3 |    0.199262     | 0.217917  |   0.366839    || lr0.0001_hdim32_do0.0  |    0.236734     | 0.313647  |   -9.647883   ||  lr0.001_hdim32_do0.0  |    0.226325     | 0.479087  |   -0.094879   || lr0.001_hdim128_do0.3  |    0.211276     | 0.545321  |   -0.268541   ||  lr0.01_hdim128_do0.6  |    0.238816     | 0.413160  |   0.192252    ||  lr0.01_hdim128_do0.0  |    0.340562     | 0.796216  |   -1.484344   ||  lr0.01_hdim64_do0.6   |    0.263552     | 0.396611  |   0.212692    ||  lr0.01_hdim32_do0.0   |    0.371635     | 0.866089  |   -1.596811   ||  lr0.01_hdim128_do0.3  |    0.299062     | 0.650552  |   -0.698870   ||  lr0.001_hdim32_do0.6  |    0.199160     | 0.269113  |   0.536666    ||  lr0.001_hdim64_do0.6  |    0.196005     | 0.351168  |   0.295199    || lr0.0001_hdim64_do0.3  |    0.227803     | 0.253033  |   -0.336243   || lr0.0001_hdim64_do0.6  |    0.246033     | 0.315547  |   -8.151037   || lr0.0001_hdim128_do0.0 |    0.184923     | 0.203477  |   0.591489    || lr0.0001_hdim64_do0.0  |    0.210855     | 0.221721  |   0.612034    ||  lr0.001_hdim64_do0.3  |    0.205427     | 0.478154  |   -0.110683   ||  lr0.001_hdim64_do0.0  |    0.194936     | 0.580364  |   -0.837558   ||  lr0.01_hdim64_do0.0   |    0.295101     | 0.704713  |   -0.920688   ||  lr0.01_hdim32_do0.6   |    0.232968     | 0.288357  |   0.498615    ||  lr0.01_hdim32_do0.3   |    0.286834     | 0.489060  |   -0.104738   ||  lr0.01_hdim64_do0.3   |    0.240279     | 0.565656  |   -0.386141   |This table shows a summary of the results of the hyperparameter tuning. The table contains the model name, the validation loss, test loss, and test $R^2$ score for the base model and all the combinations of hyperparameters.Overall, we can use hyperparameter tuning to figure out what is the best combination of values we can use to get a well-performing model. In this post I showed the basics, but there are other hyperparameters that can be tuned, such as batch size, number of hidden layers, and optimizer momentum. In addition, one can also use techniques such as random search when working with large number of values or hyperparameter, or Bayesian optimization when evaluating the model is computationally time-consuming. When there are issues with the model, we can use gradient norm checking to get a better understanding of the behavior of the gradients across all layers and epochs. This may not always be useful, but its another tool one can use to check performance.The code presented and plots displayed in this and the previous post can be found on my Github under the build-mlp repo [1]. Feel free to reach out if you have any questions about what we covered this week. I will take a break the next few weeks and come back with natural language processing examples. Stay tuned![1] Alberto J. Garcia, Build MLP, 2025. Available at: https://github.com/AJG91/build-mlp.⬅ Back to Home">
+    <meta itemprop="datePublished" content="2025-10-12T00:00:00-07:00">
+    
+
+    <div class="page__inner-wrap">
+      
+        <header>
+          <h1 id="page-title" class="page__title" itemprop="headline">
+            <a href="https://ajg91.github.io//posts/machine-learning/multi-layer-perceptron-hyperparameter-tuning/" itemprop="url">Multi-layer perceptron: Hyperparameter tuning
+</a>
+          </h1>
+          
+
+
+        </header>
+      
+
+      <section class="page__content" itemprop="text">
+        
+        <p class="post-date">October 12, 2025</p>
+
+<p>This week we will learn about how to build a multi-layer perceptron (MLP), as well as hyperparameter tuning and debugging the model. Some information may be duplicate from previous posts, but I will go over it again to keep the posts on MLPs self-contained.</p>
+
+<p>What is a multi-layer perceptron (MLP)?<br />
+A MLP is a artificial feedforward neural network that consists on multiple layers including an input layer, hidden layers (at least one), and an output layer. The layers are fully connected, which means that each neuron in layer a is connected to each neuron in layer b. Each connection is assigned a weight and each neuron a bias.</p>
+
+<p>There are two phases when training a MLP: forward propagation and backward propagation. During forward propagation, the data flows from the input layer, through all the intermediate layers, and finally through the output layer with each layer processing the outputs of the previous one. The output is then compared to the truth and the error is calculated. During backpropagation, the error flows backwards through the layers, adjusting the weights and biases using techniques such as gradient descent, which tries to find the combinations of weights and bias that minimize the error. Once this process finishes for all weights and biases, the model will once again switch to forward propagation.</p>
+
+<p>We will be using the <a href="https://scikit-learn.org/stable/modules/generated/sklearn.datasets.fetch_california_housing.html" title="ca-housing-docs">California housing</a> dataset we discussed last week to train and evaluate our model. This dataset contains aggregated data regarding each district in California such as median income, population, and location (latitude and longitude). For more information see this <a href="https://ajg91.github.io/posts/2025-10-05-multi-layer-perceptron-data-description/" title="mlp-blog-post-#1">post</a>.</p>
+
+<p>Since we already went over the dataset in the last post, we can jump straight into the model and experiments. Our model class contains the following constructor (minus the docstring):</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">MLP</span><span class="p">(</span><span class="n">nn</span><span class="p">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">input_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">,</span> <span class="n">dropout</span><span class="p">):</span>
+        <span class="nf">super</span><span class="p">().</span><span class="nf">__init__</span><span class="p">()</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">net</span> <span class="o">=</span> <span class="n">nn</span><span class="p">.</span><span class="nc">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">Linear</span><span class="p">(</span><span class="n">input_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">Dropout</span><span class="p">(</span><span class="n">dropout</span><span class="p">),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="n">hidden_dim</span><span class="p">),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">Linear</span><span class="p">(</span><span class="n">hidden_dim</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="p">)</span>
+</code></pre></div></div>
+
+<p>Let’s break it down:</p>
+<ol>
+  <li><code class="language-plaintext highlighter-rouge">nn.Sequential</code><br />
+    <ul>
+      <li>This simplies building a neural network by organizing the layers in a sequential order. In other words, the network knows that it has to flow sequentially through the layers in the order defined.</li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">nn.Linear(input_dim, hidden_dim)</code><br />
+    <ul>
+      <li>This is a fully connected linear layer with input size input_dim (output of CNN) and output size of hidden_dim neurons.<br /></li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">nn.ReLU()</code><br />
+    <ul>
+      <li>This is a Rectified Linear Unit activation function. It is defined as $\text{ReLU}(x) = \text{max}(0, x)$. Essentially, it zeros out the negative values while introducing non-linearity. This type of activation function is simple and fast to use compared to others such as $\text{tanh}(x)$ or sigmoid.<br /></li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">nn.Dropout()</code><br />
+    <ul>
+      <li>This randomly turns off neurons (equivalent to zeroing out some inputs), forcing the network to learn more general features instead of relying solely on specific neurons.</li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">nn.Linear(hidden_dim, hidden_dim)</code><br />
+    <ul>
+      <li>This is another fully connected linear layer, but now the input size is hidden_dim and the output size is hidden_dim. This implies this is an intermediate layer.<br /></li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">nn.ReLU()</code><br />
+    <ul>
+      <li>Same as before.<br /></li>
+    </ul>
+  </li>
+  <li><code class="language-plaintext highlighter-rouge">nn.Linear(hidden_dim, 1)</code><br />
+    <ul>
+      <li>This is another fully connected linear layer, but now the input size is input_dim and the output size is $1$, which means we want to predict one scalar output per input.<br /></li>
+    </ul>
+  </li>
+</ol>
+
+<p>As we can see, the model is pretty straightforward. I purposely made the <code class="language-plaintext highlighter-rouge">hidden_dim</code> and <code class="language-plaintext highlighter-rouge">dropout</code> variables because we will be varying this when tuning hyperparameters.</p>
+
+<p>Training the model over $15$ epochs gives us the following:</p>
+
+<p><img src="/assets/images/build_mlp/base_model/Huber_vs_epochs.png" alt="huber_base" /></p>
+
+<p>This plot shows how the Huber loss function varies over epochs in the training and validation phase. I used the Huber loss function as a metric because it is less sensitive to outliers when compared to the Mean Square Error. It is quadratic at small distances and linear for larger values.</p>
+
+<p>The overall structure of the plot mostly looks good. Both the training and validation decrease as the model is trained. The only issue is with the higher epochs, where the curves end up crossing. This indicates that the model is most likely overfitting. You don’t want the validation metric to start cross the training metric since this implies that the model is no longer generalizing.</p>
+
+<p>We can in fact check where the model started overfitting by looking in the “metrics_output.log” file generated at each run. This is the latter part of the file:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Epoch</span> <span class="mi">11</span><span class="p">:</span>
+<span class="n">New</span> <span class="n">best</span> <span class="n">model</span> <span class="n">at</span> <span class="n">epoch</span> <span class="mi">11</span> <span class="p">(</span><span class="n">val_loss</span><span class="o">=</span><span class="mf">0.2057</span><span class="p">)</span>
+<span class="n">Train</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2138</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.6054</span>
+<span class="n">Validation</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2057</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.6258</span>
+
+<span class="n">Epoch</span> <span class="mi">12</span><span class="p">:</span>
+<span class="n">New</span> <span class="n">best</span> <span class="n">model</span> <span class="n">at</span> <span class="n">epoch</span> <span class="mi">12</span> <span class="p">(</span><span class="n">val_loss</span><span class="o">=</span><span class="mf">0.2023</span><span class="p">)</span>
+<span class="n">Train</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2071</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.6200</span>
+<span class="n">Validation</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2023</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.6355</span>
+
+<span class="n">Epoch</span> <span class="mi">13</span><span class="p">:</span>
+<span class="n">Train</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2019</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.6317</span>
+<span class="n">Validation</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2024</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.6378</span>
+
+<span class="n">Epoch</span> <span class="mi">14</span><span class="p">:</span>
+<span class="n">New</span> <span class="n">best</span> <span class="n">model</span> <span class="n">at</span> <span class="n">epoch</span> <span class="mi">14</span> <span class="p">(</span><span class="n">val_loss</span><span class="o">=</span><span class="mf">0.2007</span><span class="p">)</span>
+<span class="n">Train</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.1977</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.6416</span>
+<span class="n">Validation</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2007</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.6443</span>
+
+<span class="n">Epoch</span> <span class="mi">15</span><span class="p">:</span>
+<span class="n">Train</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.1939</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.6510</span>
+<span class="n">Validation</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2013</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.6450</span>
+
+<span class="n">Test</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2135</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.6071</span>
+</code></pre></div></div>
+
+<p>Looking in this file, we see assume that the model started overfitting around epoch $13$ since this was the first instance of no new best model recorded. The solution would be to train the model for $12$ epochs instead of $15$. Essentially, the model will see the data less so it will not be able to overfit on the features. You can also include something like early stopping so that the training stops when the loss is no longer changing above some tolerance. Another technique is to use a scheduler to change the learning rate (or other hyperparameters) at scheduled intervals. This will help improve how your model generalizes.</p>
+
+<p><img src="/assets/images/build_mlp/base_model/R2_vs_epochs.png" alt="R2_base" /></p>
+
+<p>This next plot shows the $R^2$ score, which measures how well a regression model describes the variability of the target variable. In other words, it tells you how much of the variation in the target variable is explained by the inputs. This quantity is useful because it tells you how much of the variance in the predicted value is explained by the features or is just random noise. This value is bounded between $[-1, 1]$. Generally, a $R^2$ score closer to $1$ implies a better-fitting model. On the other hand, a value close to $0$ means that the model is not learning any of the patterns in the dataset, but can still output the average. On the opposite end of the spectrum, a score closer to $-1$ indicates a model that is doing worse than predicting the average. In fact, it is learning all the wrong things. In this case, the $R^2$ score appears to be close to $1$ so we can infer that the model is making well-informed predictions.</p>
+
+<p>The results plots above are obtained by running the “base” model. The parameters used here are:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span>
+<span class="sh">"</span><span class="s">model_version</span><span class="sh">"</span><span class="p">:</span> <span class="sh">"</span><span class="s">baseline</span><span class="sh">"</span><span class="p">,</span>
+<span class="sh">"</span><span class="s">epochs</span><span class="sh">"</span><span class="p">:</span> <span class="mi">15</span><span class="p">,</span>
+<span class="sh">"</span><span class="s">learning_rate</span><span class="sh">"</span><span class="p">:</span> <span class="mf">0.0001</span><span class="p">,</span>
+<span class="sh">"</span><span class="s">hidden_dim</span><span class="sh">"</span><span class="p">:</span> <span class="mi">64</span><span class="p">,</span>
+<span class="sh">"</span><span class="s">dropout</span><span class="sh">"</span><span class="p">:</span> <span class="mf">0.0</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>and can be found in <code class="language-plaintext highlighter-rouge">.../experiments/base_model/params.json</code>.</p>
+
+<p>We can now check the logs generated when the code is ran once. In this case, the code generates a file called “grad_norm_output.log” located in <code class="language-plaintext highlighter-rouge">.../experiments/base_model/</code>. This file has information of what the gradient norm was across different layers at each epoch. For example:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Epoch</span><span class="p">:</span> <span class="mi">11</span><span class="p">,</span> <span class="n">grad_norm</span><span class="o">/</span><span class="n">net</span><span class="p">.</span><span class="mf">0.</span><span class="n">weight</span><span class="p">:</span> <span class="mf">0.2753058969974518</span>
+<span class="n">Epoch</span><span class="p">:</span> <span class="mi">11</span><span class="p">,</span> <span class="n">grad_norm</span><span class="o">/</span><span class="n">net</span><span class="p">.</span><span class="mf">0.</span><span class="n">bias</span><span class="p">:</span> <span class="mf">0.0689358115196228</span>
+<span class="n">Epoch</span><span class="p">:</span> <span class="mi">11</span><span class="p">,</span> <span class="n">grad_norm</span><span class="o">/</span><span class="n">net</span><span class="p">.</span><span class="mf">3.</span><span class="n">weight</span><span class="p">:</span> <span class="mf">0.27505698800086975</span>
+<span class="n">Epoch</span><span class="p">:</span> <span class="mi">11</span><span class="p">,</span> <span class="n">grad_norm</span><span class="o">/</span><span class="n">net</span><span class="p">.</span><span class="mf">3.</span><span class="n">bias</span><span class="p">:</span> <span class="mf">0.035825666040182114</span>
+<span class="n">Epoch</span><span class="p">:</span> <span class="mi">11</span><span class="p">,</span> <span class="n">grad_norm</span><span class="o">/</span><span class="n">net</span><span class="p">.</span><span class="mf">5.</span><span class="n">weight</span><span class="p">:</span> <span class="mf">0.33901259303092957</span>
+<span class="n">Epoch</span><span class="p">:</span> <span class="mi">11</span><span class="p">,</span> <span class="n">grad_norm</span><span class="o">/</span><span class="n">net</span><span class="p">.</span><span class="mf">5.</span><span class="n">bias</span><span class="p">:</span> <span class="mf">0.024257883429527283</span>
+<span class="n">Epoch</span><span class="p">:</span> <span class="mi">11</span><span class="p">,</span> <span class="n">grad_norm</span><span class="o">/</span><span class="n">total</span><span class="p">:</span> <span class="mf">0.5224971771240234</span>
+
+<span class="n">Epoch</span><span class="p">:</span> <span class="mi">12</span><span class="p">,</span> <span class="n">grad_norm</span><span class="o">/</span><span class="n">net</span><span class="p">.</span><span class="mf">0.</span><span class="n">weight</span><span class="p">:</span> <span class="mf">0.2417425960302353</span>
+<span class="n">Epoch</span><span class="p">:</span> <span class="mi">12</span><span class="p">,</span> <span class="n">grad_norm</span><span class="o">/</span><span class="n">net</span><span class="p">.</span><span class="mf">0.</span><span class="n">bias</span><span class="p">:</span> <span class="mf">0.0713915303349495</span>
+<span class="n">Epoch</span><span class="p">:</span> <span class="mi">12</span><span class="p">,</span> <span class="n">grad_norm</span><span class="o">/</span><span class="n">net</span><span class="p">.</span><span class="mf">3.</span><span class="n">weight</span><span class="p">:</span> <span class="mf">0.22586220502853394</span>
+<span class="n">Epoch</span><span class="p">:</span> <span class="mi">12</span><span class="p">,</span> <span class="n">grad_norm</span><span class="o">/</span><span class="n">net</span><span class="p">.</span><span class="mf">3.</span><span class="n">bias</span><span class="p">:</span> <span class="mf">0.037096235901117325</span>
+<span class="n">Epoch</span><span class="p">:</span> <span class="mi">12</span><span class="p">,</span> <span class="n">grad_norm</span><span class="o">/</span><span class="n">net</span><span class="p">.</span><span class="mf">5.</span><span class="n">weight</span><span class="p">:</span> <span class="mf">0.281486839056015</span>
+<span class="n">Epoch</span><span class="p">:</span> <span class="mi">12</span><span class="p">,</span> <span class="n">grad_norm</span><span class="o">/</span><span class="n">net</span><span class="p">.</span><span class="mf">5.</span><span class="n">bias</span><span class="p">:</span> <span class="mf">0.041641950607299805</span>
+<span class="n">Epoch</span><span class="p">:</span> <span class="mi">12</span><span class="p">,</span> <span class="n">grad_norm</span><span class="o">/</span><span class="n">total</span><span class="p">:</span> <span class="mf">0.4437284767627716</span>
+</code></pre></div></div>
+
+<p>Gradient norm checking is used to verify that the gradients calculated during backpropagation make sense. If the gradients are too small, the model is either not efficiently learning or not learning at all. If they are too big, you have the exploding gradients problem. In general, the gradients should be between $10^{-2}-10$. Anything below or above this threshold indicates issues with the model. In the example above, we can see that the values look to be in the range mentioned, so our model should be okay.</p>
+
+<p>This does not always tell you if there are issues with the model. The gradient norms can look fine, but the model may not be working correctly. But if the gradient norms do not look fine, you know there <em>is</em> something wrong.</p>
+
+<p>Another thing that you will see in the folder <code class="language-plaintext highlighter-rouge">.../experiments/base_model/</code> is a checkpoints folder. This folder contains the last five epochs worth of models, as well as the model with the best validation metrics. This is useful when trying to resume training the model after initial trainings have already been done. In general, this is good practice to develop since you don’t have to retrain large models if you get more data or if you want to experiment with the model at a later time.</p>
+
+<p>Now we can move on to hyperparameter tuning. In this case, we will be using a grid search approach where we define a set of hyperparameters and values that we want to vary, create a mesh over all the values, and use this mesh to train different models with these hyperparameters. While efficient, this method tends to be slow. This is fine in our case since we will only be tuning a handful of hyperparameters over a limited set of values. In this case, we will be forming a grid for the learning rate, hidden dimension, and dropout rate using the following:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">vary_lr</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.01</span><span class="p">,</span> <span class="mf">0.001</span><span class="p">,</span> <span class="mf">0.0001</span><span class="p">]</span>
+<span class="n">vary_hidden_dim</span> <span class="o">=</span> <span class="p">[</span><span class="mi">32</span><span class="p">,</span> <span class="mi">64</span><span class="p">,</span> <span class="mi">128</span><span class="p">]</span>
+<span class="n">vary_dropout</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.3</span><span class="p">,</span> <span class="mf">0.6</span><span class="p">]</span>
+
+<span class="n">prms_product</span> <span class="o">=</span> <span class="nf">list</span><span class="p">(</span><span class="nf">product</span><span class="p">(</span><span class="n">vary_lr</span><span class="p">,</span> <span class="n">vary_hidden_dim</span><span class="p">,</span> <span class="n">vary_dropout</span><span class="p">))</span>
+</code></pre></div></div>
+
+<p>The list <code class="language-plaintext highlighter-rouge">prms_product</code> contains combinations of these hyperparameters. Like before, the models of the last five epochs are being saved, as well as the model that performed the best on the validation set. We also log the metrics and the gradient norms over the different epochs. We will now see the results of a subset of different models trained with these hyerparameters.</p>
+
+<p>First example:<br />
+params #2: (0.01, 32, 0.3)</p>
+
+<p><img src="/assets/images/build_mlp/tests/test2/lr0.01_hdim32_do0.3/Huber_vs_epochs.png" alt="huber_test2" /></p>
+
+<p><img src="/assets/images/build_mlp/tests/test2/lr0.01_hdim32_do0.3/R2_vs_epochs.png" alt="R2_test2" /></p>
+
+<p>Just looking at the plots we can tell that these hyperparameters are <em>not</em> a good choice. While the training loss looks decent, the validation loss does not decrease as we increase the number of epochs. This implies that the model is not learning the dataset.</p>
+
+<p>Second example:<br />
+params #12: (0.001, 32, 0.6)</p>
+
+<p><img src="/assets/images/build_mlp/tests/test12/lr0.001_hdim32_do0.6/Huber_vs_epochs.png" alt="huber_test12" /></p>
+
+<p><img src="/assets/images/build_mlp/tests/test12/lr0.001_hdim32_do0.6/R2_vs_epochs.png" alt="R2_test12" /></p>
+
+<p>While the loss may look good, the validation loss also crossed over the training loss. While we can just stop training early, the loss curves do not decay as nicely as the base model.</p>
+
+<p>Third example:<br />
+params #20: (0.0001, 32, 0.3)</p>
+
+<p><img src="/assets/images/build_mlp/tests/test20/lr0.0001_hdim32_do0.3/Huber_vs_epochs.png" alt="huber_test20" /></p>
+
+<p><img src="/assets/images/build_mlp/tests/test20/lr0.0001_hdim32_do0.3/R2_vs_epochs.png" alt="R2_test20" /></p>
+
+<p>These loss curves look better than the previous two and there is no crossing of the loss. The model seems to be slowly learning over time since there is not a sharp drop in the loss. The $R^2$ score also increases and levels out nicely. These hyperparameters are a good choice. Let’s take a closer look at the metrics outputs:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Epoch</span> <span class="mi">13</span><span class="p">:</span>
+<span class="n">New</span> <span class="n">best</span> <span class="n">model</span> <span class="n">at</span> <span class="n">epoch</span> <span class="mi">13</span> <span class="p">(</span><span class="n">val_loss</span><span class="o">=</span><span class="mf">0.2799</span><span class="p">)</span>
+<span class="n">Train</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.3321</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.2695</span>
+<span class="n">Validation</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2799</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.4258</span>
+
+<span class="n">Epoch</span> <span class="mi">14</span><span class="p">:</span>
+<span class="n">New</span> <span class="n">best</span> <span class="n">model</span> <span class="n">at</span> <span class="n">epoch</span> <span class="mi">14</span> <span class="p">(</span><span class="n">val_loss</span><span class="o">=</span><span class="mf">0.2703</span><span class="p">)</span>
+<span class="n">Train</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.3234</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.2608</span>
+<span class="n">Validation</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2703</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.4506</span>
+
+<span class="n">Epoch</span> <span class="mi">15</span><span class="p">:</span>
+<span class="n">New</span> <span class="n">best</span> <span class="n">model</span> <span class="n">at</span> <span class="n">epoch</span> <span class="mi">15</span> <span class="p">(</span><span class="n">val_loss</span><span class="o">=</span><span class="mf">0.2622</span><span class="p">)</span>
+<span class="n">Train</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.3156</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.3327</span>
+<span class="n">Validation</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2622</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.4720</span>
+
+<span class="n">Test</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.3395</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="o">-</span><span class="mf">10.3754</span>
+</code></pre></div></div>
+
+<p>The metrics outputs seem fine, but the $R^2$ score on the test dataset is $-10.375$. Not only is it negative, but it is beyond the range we mentioned earlier in the post. If they do not perform well on the test dataset, they may not be a good choice.</p>
+
+<p>Fourth example:<br />
+params #26: (0.0001, 128, 0.3)</p>
+
+<p><img src="/assets/images/build_mlp/tests/test26/lr0.0001_hdim128_do0.3/Huber_vs_epochs.png" alt="huber_test20" /></p>
+
+<p><img src="/assets/images/build_mlp/tests/test26/lr0.0001_hdim128_do0.3/R2_vs_epochs.png" alt="R2_test20" /></p>
+
+<p>These loss curves also look really nice. It seems that the model learns quickly at first with these hyperparamters, then does not change as much with increasing epochs. The $R^2$ score also increases and levels out similar to the third example. These hyperparameters are also a good choice. Let’s take a closer look at the metrics outputs:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Epoch</span> <span class="mi">13</span><span class="p">:</span>
+<span class="n">New</span> <span class="n">best</span> <span class="n">model</span> <span class="n">at</span> <span class="n">epoch</span> <span class="mi">13</span> <span class="p">(</span><span class="n">val_loss</span><span class="o">=</span><span class="mf">0.1993</span><span class="p">)</span>
+<span class="n">Train</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2310</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.5754</span>
+<span class="n">Validation</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.1993</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.6467</span>
+
+<span class="n">Epoch</span> <span class="mi">14</span><span class="p">:</span>
+<span class="n">Train</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2255</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.5897</span>
+<span class="n">Validation</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2010</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.6438</span>
+
+<span class="n">Epoch</span> <span class="mi">15</span><span class="p">:</span>
+<span class="n">Train</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2251</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.5873</span>
+<span class="n">Validation</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.1999</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.6470</span>
+
+<span class="n">Test</span> <span class="o">-</span> <span class="n">Huber</span><span class="p">:</span> <span class="mf">0.2179</span><span class="p">,</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span><span class="p">:</span> <span class="mf">0.3668</span>
+</code></pre></div></div>
+
+<p>The model seems to be performing well with the test set so these hyperparameters seem to be a good choice.</p>
+
+<p>At first glance, the last two examples appear to be good choices and may be better than our initial base model. If we then check how well the model performs in the test phase, we see that the third example does not perform well on the new data. On the other hand, the fourth example outputs a decent $R^2$ score and loss, so we would choose this set of hyperparameters.</p>
+
+<p>We also display a table with all the results:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">|</span>         <span class="n">Model</span>          <span class="o">|</span> <span class="n">Validation</span> <span class="n">loss</span> <span class="o">|</span> <span class="n">Test</span> <span class="n">loss</span> <span class="o">|</span> <span class="n">Test</span> <span class="n">R2</span><span class="o">-</span><span class="n">score</span> <span class="o">|</span>
+<span class="o">|</span> <span class="o">----------------------</span> <span class="o">|</span> <span class="o">---------------</span> <span class="o">|</span> <span class="o">---------</span> <span class="o">|</span> <span class="o">-------------</span> <span class="o">|</span>
+<span class="o">|</span>       <span class="n">base_model</span>       <span class="o">|</span>    <span class="mf">0.200688</span>     <span class="o">|</span> <span class="mf">0.213490</span>  <span class="o">|</span>   <span class="mf">0.607139</span>    <span class="o">|</span>
+<span class="o">|</span> <span class="n">lr0</span><span class="p">.</span><span class="mi">001</span><span class="n">_hdim128_do0</span><span class="p">.</span><span class="mi">0</span>  <span class="o">|</span>    <span class="mf">0.216196</span>     <span class="o">|</span> <span class="mf">0.610909</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">0.554772</span>   <span class="o">|</span>
+<span class="o">|</span>  <span class="n">lr0</span><span class="p">.</span><span class="mi">001</span><span class="n">_hdim32_do0</span><span class="p">.</span><span class="mi">3</span>  <span class="o">|</span>    <span class="mf">0.205734</span>     <span class="o">|</span> <span class="mf">0.313990</span>  <span class="o">|</span>   <span class="mf">0.435274</span>    <span class="o">|</span>
+<span class="o">|</span> <span class="n">lr0</span><span class="p">.</span><span class="mi">0001</span><span class="n">_hdim128_do0</span><span class="p">.</span><span class="mi">6</span> <span class="o">|</span>    <span class="mf">0.215220</span>     <span class="o">|</span> <span class="mf">0.243275</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">0.366992</span>   <span class="o">|</span>
+<span class="o">|</span> <span class="n">lr0</span><span class="p">.</span><span class="mi">001</span><span class="n">_hdim128_do0</span><span class="p">.</span><span class="mi">6</span>  <span class="o">|</span>    <span class="mf">0.199085</span>     <span class="o">|</span> <span class="mf">0.375953</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">0.558818</span>   <span class="o">|</span>
+<span class="o">|</span> <span class="n">lr0</span><span class="p">.</span><span class="mi">0001</span><span class="n">_hdim32_do0</span><span class="p">.</span><span class="mi">3</span>  <span class="o">|</span>    <span class="mf">0.262168</span>     <span class="o">|</span> <span class="mf">0.339538</span>  <span class="o">|</span>  <span class="o">-</span><span class="mf">10.375393</span>   <span class="o">|</span>
+<span class="o">|</span> <span class="n">lr0</span><span class="p">.</span><span class="mi">0001</span><span class="n">_hdim32_do0</span><span class="p">.</span><span class="mi">6</span>  <span class="o">|</span>    <span class="mf">0.294543</span>     <span class="o">|</span> <span class="mf">0.387825</span>  <span class="o">|</span>  <span class="o">-</span><span class="mf">14.893430</span>   <span class="o">|</span>
+<span class="o">|</span> <span class="n">lr0</span><span class="p">.</span><span class="mi">0001</span><span class="n">_hdim128_do0</span><span class="p">.</span><span class="mi">3</span> <span class="o">|</span>    <span class="mf">0.199262</span>     <span class="o">|</span> <span class="mf">0.217917</span>  <span class="o">|</span>   <span class="mf">0.366839</span>    <span class="o">|</span>
+<span class="o">|</span> <span class="n">lr0</span><span class="p">.</span><span class="mi">0001</span><span class="n">_hdim32_do0</span><span class="p">.</span><span class="mi">0</span>  <span class="o">|</span>    <span class="mf">0.236734</span>     <span class="o">|</span> <span class="mf">0.313647</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">9.647883</span>   <span class="o">|</span>
+<span class="o">|</span>  <span class="n">lr0</span><span class="p">.</span><span class="mi">001</span><span class="n">_hdim32_do0</span><span class="p">.</span><span class="mi">0</span>  <span class="o">|</span>    <span class="mf">0.226325</span>     <span class="o">|</span> <span class="mf">0.479087</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">0.094879</span>   <span class="o">|</span>
+<span class="o">|</span> <span class="n">lr0</span><span class="p">.</span><span class="mi">001</span><span class="n">_hdim128_do0</span><span class="p">.</span><span class="mi">3</span>  <span class="o">|</span>    <span class="mf">0.211276</span>     <span class="o">|</span> <span class="mf">0.545321</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">0.268541</span>   <span class="o">|</span>
+<span class="o">|</span>  <span class="n">lr0</span><span class="p">.</span><span class="mi">01</span><span class="n">_hdim128_do0</span><span class="p">.</span><span class="mi">6</span>  <span class="o">|</span>    <span class="mf">0.238816</span>     <span class="o">|</span> <span class="mf">0.413160</span>  <span class="o">|</span>   <span class="mf">0.192252</span>    <span class="o">|</span>
+<span class="o">|</span>  <span class="n">lr0</span><span class="p">.</span><span class="mi">01</span><span class="n">_hdim128_do0</span><span class="p">.</span><span class="mi">0</span>  <span class="o">|</span>    <span class="mf">0.340562</span>     <span class="o">|</span> <span class="mf">0.796216</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">1.484344</span>   <span class="o">|</span>
+<span class="o">|</span>  <span class="n">lr0</span><span class="p">.</span><span class="mi">01</span><span class="n">_hdim64_do0</span><span class="p">.</span><span class="mi">6</span>   <span class="o">|</span>    <span class="mf">0.263552</span>     <span class="o">|</span> <span class="mf">0.396611</span>  <span class="o">|</span>   <span class="mf">0.212692</span>    <span class="o">|</span>
+<span class="o">|</span>  <span class="n">lr0</span><span class="p">.</span><span class="mi">01</span><span class="n">_hdim32_do0</span><span class="p">.</span><span class="mi">0</span>   <span class="o">|</span>    <span class="mf">0.371635</span>     <span class="o">|</span> <span class="mf">0.866089</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">1.596811</span>   <span class="o">|</span>
+<span class="o">|</span>  <span class="n">lr0</span><span class="p">.</span><span class="mi">01</span><span class="n">_hdim128_do0</span><span class="p">.</span><span class="mi">3</span>  <span class="o">|</span>    <span class="mf">0.299062</span>     <span class="o">|</span> <span class="mf">0.650552</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">0.698870</span>   <span class="o">|</span>
+<span class="o">|</span>  <span class="n">lr0</span><span class="p">.</span><span class="mi">001</span><span class="n">_hdim32_do0</span><span class="p">.</span><span class="mi">6</span>  <span class="o">|</span>    <span class="mf">0.199160</span>     <span class="o">|</span> <span class="mf">0.269113</span>  <span class="o">|</span>   <span class="mf">0.536666</span>    <span class="o">|</span>
+<span class="o">|</span>  <span class="n">lr0</span><span class="p">.</span><span class="mi">001</span><span class="n">_hdim64_do0</span><span class="p">.</span><span class="mi">6</span>  <span class="o">|</span>    <span class="mf">0.196005</span>     <span class="o">|</span> <span class="mf">0.351168</span>  <span class="o">|</span>   <span class="mf">0.295199</span>    <span class="o">|</span>
+<span class="o">|</span> <span class="n">lr0</span><span class="p">.</span><span class="mi">0001</span><span class="n">_hdim64_do0</span><span class="p">.</span><span class="mi">3</span>  <span class="o">|</span>    <span class="mf">0.227803</span>     <span class="o">|</span> <span class="mf">0.253033</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">0.336243</span>   <span class="o">|</span>
+<span class="o">|</span> <span class="n">lr0</span><span class="p">.</span><span class="mi">0001</span><span class="n">_hdim64_do0</span><span class="p">.</span><span class="mi">6</span>  <span class="o">|</span>    <span class="mf">0.246033</span>     <span class="o">|</span> <span class="mf">0.315547</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">8.151037</span>   <span class="o">|</span>
+<span class="o">|</span> <span class="n">lr0</span><span class="p">.</span><span class="mi">0001</span><span class="n">_hdim128_do0</span><span class="p">.</span><span class="mi">0</span> <span class="o">|</span>    <span class="mf">0.184923</span>     <span class="o">|</span> <span class="mf">0.203477</span>  <span class="o">|</span>   <span class="mf">0.591489</span>    <span class="o">|</span>
+<span class="o">|</span> <span class="n">lr0</span><span class="p">.</span><span class="mi">0001</span><span class="n">_hdim64_do0</span><span class="p">.</span><span class="mi">0</span>  <span class="o">|</span>    <span class="mf">0.210855</span>     <span class="o">|</span> <span class="mf">0.221721</span>  <span class="o">|</span>   <span class="mf">0.612034</span>    <span class="o">|</span>
+<span class="o">|</span>  <span class="n">lr0</span><span class="p">.</span><span class="mi">001</span><span class="n">_hdim64_do0</span><span class="p">.</span><span class="mi">3</span>  <span class="o">|</span>    <span class="mf">0.205427</span>     <span class="o">|</span> <span class="mf">0.478154</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">0.110683</span>   <span class="o">|</span>
+<span class="o">|</span>  <span class="n">lr0</span><span class="p">.</span><span class="mi">001</span><span class="n">_hdim64_do0</span><span class="p">.</span><span class="mi">0</span>  <span class="o">|</span>    <span class="mf">0.194936</span>     <span class="o">|</span> <span class="mf">0.580364</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">0.837558</span>   <span class="o">|</span>
+<span class="o">|</span>  <span class="n">lr0</span><span class="p">.</span><span class="mi">01</span><span class="n">_hdim64_do0</span><span class="p">.</span><span class="mi">0</span>   <span class="o">|</span>    <span class="mf">0.295101</span>     <span class="o">|</span> <span class="mf">0.704713</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">0.920688</span>   <span class="o">|</span>
+<span class="o">|</span>  <span class="n">lr0</span><span class="p">.</span><span class="mi">01</span><span class="n">_hdim32_do0</span><span class="p">.</span><span class="mi">6</span>   <span class="o">|</span>    <span class="mf">0.232968</span>     <span class="o">|</span> <span class="mf">0.288357</span>  <span class="o">|</span>   <span class="mf">0.498615</span>    <span class="o">|</span>
+<span class="o">|</span>  <span class="n">lr0</span><span class="p">.</span><span class="mi">01</span><span class="n">_hdim32_do0</span><span class="p">.</span><span class="mi">3</span>   <span class="o">|</span>    <span class="mf">0.286834</span>     <span class="o">|</span> <span class="mf">0.489060</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">0.104738</span>   <span class="o">|</span>
+<span class="o">|</span>  <span class="n">lr0</span><span class="p">.</span><span class="mi">01</span><span class="n">_hdim64_do0</span><span class="p">.</span><span class="mi">3</span>   <span class="o">|</span>    <span class="mf">0.240279</span>     <span class="o">|</span> <span class="mf">0.565656</span>  <span class="o">|</span>   <span class="o">-</span><span class="mf">0.386141</span>   <span class="o">|</span>
+</code></pre></div></div>
+
+<p>This table shows a summary of the results of the hyperparameter tuning. The table contains the model name, the validation loss, test loss, and test $R^2$ score for the base model and all the combinations of hyperparameters.</p>
+
+<p>Overall, we can use hyperparameter tuning to figure out what is the best combination of values we can use to get a well-performing model. In this post I showed the basics, but there are other hyperparameters that can be tuned, such as batch size, number of hidden layers, and optimizer momentum. In addition, one can also use techniques such as random search when working with large number of values or hyperparameter, or Bayesian optimization when evaluating the model is computationally time-consuming. When there are issues with the model, we can use gradient norm checking to get a better understanding of the behavior of the gradients across all layers and epochs. This may not always be useful, but its another tool one can use to check performance.</p>
+
+<p>The code presented and plots displayed in this and the previous post can be found on my Github under the <a href="https://github.com/AJG91/build-mlp" title="build-mlp-repo">build-mlp</a> repo <a class="citation" href="#Garcia2025BuildMLP">[1]</a>. Feel free to reach out if you have any questions about what we covered this week. I will take a break the next few weeks and come back with natural language processing examples. Stay tuned!</p>
+
+<ol class="bibliography"><li><span id="Garcia2025BuildMLP">[1] Alberto J. Garcia, <i>Build MLP</i>, 2025. Available at: https://github.com/AJG91/build-mlp.</span></li></ol>
+<p><a href="/" class="btn">⬅ Back to Home</a></p>
+
+        
+      </section>
+
+      <footer class="page__meta">
+        
+        
+
+
+        
+
+  <p class="page__date"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Updated:</strong> <time class="dt-published" datetime="2025-10-12T00:00:00-07:00">October 12, 2025</time></p>
+
+      </footer>
+
+      
+
+      
+  <nav class="pagination">
+    
+      <a href="/posts/machine-learning/multi-layer-perceptron-data-description/" class="pagination--pager" title="Multi-layer perceptron: California housing dataset">Previous</a>
+    
+    
+      <a href="/posts/large-language-models/natural-language-processing-model/" class="pagination--pager" title="Natural language models: An introduction to human-computer language interaction">Next</a>
+    
+  </nav>
+
+
+    </div>
+
+    
+  </article>
+
+  
+  
+</div>
+
+      
+    </div>
+
+    
+
+    <div id="footer" class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        
+
+<div class="page__footer-follow">
+  <ul class="social-icons">
+    
+
+    
+
+    
+      <li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+    
+  </ul>
+</div>
+
+
+<div class="page__footer-copyright">&copy; 2026 <a href="https://ajg91.github.io/">AJG&#39;s Homepage</a>. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/jekyll-themes/minimal-mistakes/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+
+  </body>
+</html>
