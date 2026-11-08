@@ -1,0 +1,881 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.27.3 by Michael Rose
+  Copyright 2013-2025 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE
+-->
+
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin _includes/seo.html --><title>Charged Particle Dynamics - AJG’s Homepage</title>
+<meta name="description" content="This week I will walk through the derivation for the dynamics of a charged particle in an electromagnetic field. We will first derive the general results, then look into limiting cases. At the end, we will consider a specific field configuration.">
+
+
+
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="AJG&#39;s Homepage">
+<meta property="og:title" content="Charged Particle Dynamics">
+<meta property="og:url" content="https://ajg91.github.io//posts/computational-physics/plasma-physics/charged_particle_dynamics/">
+
+
+  <meta property="og:description" content="This week I will walk through the derivation for the dynamics of a charged particle in an electromagnetic field. We will first derive the general results, then look into limiting cases. At the end, we will consider a specific field configuration.">
+
+
+
+
+
+
+
+  <meta property="article:published_time" content="2026-11-08T00:00:00-08:00">
+
+
+
+
+
+
+<link rel="canonical" href="https://ajg91.github.io//posts/computational-physics/plasma-physics/charged_particle_dynamics/">
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- end _includes/seo.html -->
+
+
+
+  <link href="/feed.xml" type="application/atom+xml" rel="alternate" title="AJG's Homepage Feed">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+  
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css"></noscript>
+
+
+
+    <script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'none'
+  }
+};
+</script>
+
+<!-- 2. Load custom LaTeX macros -->
+<script src="/assets/js/mathjax-macros.js"></script>
+
+<!-- 3. Load MathJax once -->
+<script
+  id="MathJax-script"
+  defer
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+  </head>
+
+  <body class="layout--single" dir="ltr">
+    <nav class="skip-links">
+  <ul>
+    <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
+    <li><a href="#main" class="screen-reader-shortcut">Skip to content</a></li>
+    <li><a href="#footer" class="screen-reader-shortcut">Skip to footer</a></li>
+  </ul>
+</nav>
+
+    
+
+<div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        
+        <a class="site-title" href="/">
+          AJG&#39;s Homepage
+          
+        </a>
+        <ul class="visible-links"><li class="masthead__menu-item">
+              <a
+                href="/posts/"
+                
+                
+              >Posts</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/publications/"
+                
+                
+              >Publications</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/talks/"
+                
+                
+              >Talks</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/software/"
+                
+                
+              >Software</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/contact/"
+                
+                
+              >Contact Me</a>
+            </li></ul>
+        
+        <button class="greedy-nav__toggle hidden" type="button">
+          <span class="visually-hidden">Toggle menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+
+    <div class="initial-content">
+      
+
+
+
+
+  
+    
+
+
+
+<nav class="breadcrumbs">
+  <ol itemscope itemtype="https://schema.org/BreadcrumbList">
+    
+    
+    
+      
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/" itemprop="item"><span itemprop="name">Home</span></a>
+
+          <meta itemprop="position" content="1" />
+        </li>
+        <span class="sep">/</span>
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/posts" itemprop="item"><span itemprop="name">Posts</span></a>
+          <meta itemprop="position" content="2" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/computational-physics" itemprop="item"><span itemprop="name">Computational physics</span></a>
+          <meta itemprop="position" content="3" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/plasma-physics" itemprop="item"><span itemprop="name">Plasma physics</span></a>
+          <meta itemprop="position" content="4" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        <li class="current">Charged Particle Dynamics</li>
+      
+    
+  </ol>
+</nav>
+
+  
+
+
+<div id="main" role="main">
+  
+
+
+  <article class="page" itemscope itemtype="https://schema.org/CreativeWork">
+    <meta itemprop="headline" content="Charged Particle Dynamics">
+    <meta itemprop="description" content="This week I will walk through the derivation for the dynamics of a charged particle in an electromagnetic field. We will first derive the general results, then look into limiting cases. At the end, we will consider a specific field configuration.">
+    <meta itemprop="datePublished" content="2026-11-08T00:00:00-08:00">
+    
+
+    <div class="page__inner-wrap">
+      
+        <header>
+          <h1 id="page-title" class="page__title" itemprop="headline">
+            <a href="https://ajg91.github.io//posts/computational-physics/plasma-physics/charged_particle_dynamics/" itemprop="url">Charged Particle Dynamics
+</a>
+          </h1>
+          
+
+
+        </header>
+      
+
+      <section class="page__content" itemprop="text">
+        
+        <p class="post-date">November 08, 2026</p>
+
+<p>Hello everyone! This past year has been quite busy for me, but I’ve finally found some time to work on some code. Lately, I’ve been really interested in learning about plasma physics, so I will be turning my focus towards that. Hope ya’ll enjoy!</p>
+
+<p>This week I will walk through the derivation for the dynamics of a charged particle in an electromagnetic field. We will first derive the general results, then look into limiting cases. At the end, we will consider a specific field configuration.</p>
+
+<h2 id="kinematics-of-a-charged-particle">Kinematics of a Charged Particle</h2>
+<p>The force on a charged particle in an electromagnetic field is described by</p>
+
+\[\F = q(\E + \vvec \cross \B),
+\label{eq:em_force}
+\tag{1}\]
+
+<p>where $\F = m \deriv{\vvec}{t}$. The following is a list of the variables:</p>
+
+<ul>
+  <li>$q$ - The charge of the particle.</li>
+  <li>$m$ - The mass of the particle.</li>
+  <li>$\E$ - The electric field applied to the charge.</li>
+  <li>$\B$ - The magnetic field applied to the charge.</li>
+  <li>$\vvec$ - The velocity of the particle.</li>
+  <li>$\F$ - The force applied on the particle.</li>
+</ul>
+
+<p>To understand how a particle behaves different conditions, we will solve for the general solutions under two different limiting cases:</p>
+
+<ol>
+  <li>$\B \rightarrow 0, \E \neq 0$,</li>
+  <li>$\E \rightarrow 0, \B \neq 0$.</li>
+</ol>
+
+<p>Writing $\text{Eq.}~\eqref{eq:em_force}$ using Einstein notation and rearranging,</p>
+
+\[\deriv{v_i}{t} = \frac{q}{m} (E_i + \levi{i}{j}{k} v_j B_k).
+\label{eq:em_force_vel}
+\tag{2}\]
+
+<p>Assuming $\E$ and $\B$ are constant, we take the derivative with respect to time</p>
+
+\[\dderiv{v_i}{t} = \frac{q}{m} \Big(\deriv{E_i}{t} + \levi{i}{j}{k} \deriv{v_j}{t} B_k \Big).\]
+
+<p>Since $\E$ is constant, $\deriv{E_i}{t} = 0$, which yields</p>
+
+\[\dderiv{v_i}{t} = \frac{q}{m} \levi{i}{j}{k} \deriv{v_j}{t} B_k.\]
+
+<p>We can substitute $\text{Eq.}~\eqref{eq:em_force_vel}$ for the derivative term</p>
+
+\[\begin{aligned}
+\dderiv{v_i}{t} ={}&amp; \Big(\frac{q}{m}\Big)^2 \levi{i}{j}{k} \Big(E_j + \epsilon_{jmn} v_m B_n \Big) B_k, \\
+\dderiv{v_i}{t} ={}&amp; \Big(\frac{q}{m}\Big)^2 \Big[\levi{i}{j}{k} E_j B_k + \levi{i}{j}{k} \epsilon_{jmn} v_m B_n B_k \Big].
+\end{aligned}\]
+
+<p>Using the following identity,</p>
+
+\[\levi{i}{j}{k} \levi{i}{m}{n} = \kdelta{j}{m} \kdelta{k}{n} - \kdelta{j}{n}\kdelta{k}{m}\]
+
+<p>the combination of Levi-Civita symbols can be written as</p>
+
+\[\levi{i}{j}{k} \levi{j}{m}{n} = -\levi{j}{i}{k} \levi{j}{m}{n} = -\kdelta{i}{m} \kdelta{k}{n} + \kdelta{i}{n}\kdelta{k}{m}.\]
+
+<p>Substituting these into the equation gives</p>
+
+\[\dderiv{v_i}{t} = \Big(\frac{q}{m}\Big)^2 \Big[
+                        \levi{i}{j}{k} E_j B_k + (\kdelta{i}{n}\kdelta{k}{m} - \kdelta{i}{m} \kdelta{k}{n}) v_m B_n B_k 
+                        \Big].\]
+
+<p>This gives us two terms:</p>
+
+\[\begin{aligned}
+\kdelta{i}{n}\kdelta{k}{m} v_m B_n B_k ={}&amp; (v_j B_j) B_i, \\
+\kdelta{i}{m} \kdelta{k}{n} v_m B_n B_k ={}&amp; v_i  B_k B_k.
+\end{aligned}\]
+
+<p>The purely magnetic field terms now become</p>
+
+\[\dderiv{v_i}{t} = \Big(\frac{q}{m}\Big)^2 \Big[
+                        \levi{i}{j}{k} E_j B_k + (v_j B_j) B_i -  v_i  B_k B_k
+                        \Big].
+\label{eq:acc_charged_particle}
+\tag{3}\]
+
+<h3 id="case-1-no-magnetic-field">Case 1: No Magnetic Field</h3>
+<p>Let’s consider the case where $\B \rightarrow 0, \E \neq 0$.</p>
+
+\[\lim_{\B \to 0} \dderiv{v_i}{t} = 0.\]
+
+<p>We integrate both sides twice</p>
+
+\[\deriv{v_i}{t} = A \, \longrightarrow \, v_i = A t + B.\]
+
+<p>In order to determine the coefficients we impose the boundary condition</p>
+
+\[v_i(0) = v_{i0},\]
+
+<p>as well as compare both derivative equations, $\deriv{v_i}{t} \Big\rvert_{t=0}$. For the first condition,</p>
+
+\[v_i(0) = B = v_{i0}.\]
+
+<p>For the second condition,</p>
+
+\[\deriv{v_i}{t} \Big\rvert_{t=0} = A.\]
+
+<p>Referring back to $\text{Eq.}~\eqref{eq:em_force_vel}$, we obtain</p>
+
+\[\deriv{v_i}{t} \Big\rvert_{t=0} = \frac{q}{m} E_i,\]
+
+<p>thus</p>
+
+\[A = \frac{q}{m} E_i.\]
+
+<p>Combining both and substituting back into $v_i$,</p>
+
+\[v_i = \frac{q}{m} E_i t + v_{i0}.
+\label{eq:coeffs_E}
+\tag{4}\]
+
+<p>This is the general velocity equation of a charged particle in an electric field. Writing out the vector components,</p>
+
+\[v_x(t) = \frac{qE_x}{m} t + v_{x0}, 
+\quad v_y(t) = \frac{qE_y}{m} t + v_{y0},
+\quad v_z(t) = \frac{qE_z}{m} t + v_{z0}.\]
+
+<p>These equations can be written as a vector equation,</p>
+
+\[\begin{bmatrix}
+    v_x \\
+    v_y \\
+    v_z
+\end{bmatrix}
+=
+\frac{q}{m} 
+\begin{bmatrix}
+    E_{x} \\
+    E_{y} \\
+    E_{z}
+\end{bmatrix}
+t +
+\begin{bmatrix}
+    v_{x0} \\
+    v_{y0} \\
+    v_{z0}
+\end{bmatrix},\]
+
+<p>or as</p>
+
+\[\vvec = \frac{q}{m} \E t + \vvec_{0}.
+\label{eq:v_E_sol_mat_eq}
+\tag{5}\]
+
+<p>The position equation can be derived by integrating $\text{Eq.}~\eqref{eq:v_E_sol_mat_eq}$,</p>
+
+\[\xvec = \frac{q}{2m} \E t^2 + \vvec_{0} t + \xvec_0,
+\label{eq:x_E_gen_sol}
+\tag{6}\]
+
+<p>where we have used the initial condition $\xvec(0) = \xvec_0$.</p>
+
+<h3 id="case-2-no-electric-field">Case 2: No Electric Field</h3>
+<p>Let’s now look at the case where $\E \rightarrow 0, \B \neq 0$. Referring back to $\text{Eq.}~\eqref{eq:acc_charged_particle}$ and removing the electric field term gives</p>
+
+\[\dderiv{v_i}{t} = \Big(\frac{q}{m}\Big)^2 \Big[(v_j B_j) B_i -  v_i  B_k B_k \Big].\]
+
+<p>Rearranging the terms and introducing the parameter $\Omega_c$ gives us</p>
+
+\[\dderiv{v_i}{t} + \Omega^2_c v_i = \Big(\frac{q}{m}\Big)^2 (v_j B_j) B_i.
+\label{eq:gen_diff_eq}
+\tag{7}\]
+
+<p>where $\Omega_c$ is the cyclotron frequency defined by</p>
+
+\[\Omega^2_c = \Big(\frac{q}{m}\Big)^2 B_k B_k,\]
+
+<p>with period 
+\(T_c = \frac{2 \pi}{\Omega_c}.\)</p>
+
+<p>We need to figure out if the r.h.s is constant or time-dependent. To do this, let’s go back to $\text{Eq.}~\eqref{eq:em_force_vel}$,</p>
+
+\[\deriv{v_i}{t} = \frac{q}{m} \levi{i}{j}{k} v_j B_k.\]
+
+<p>Multiplying both sides by $B_i$,</p>
+
+\[B_i \deriv{v_i}{t} = \frac{q}{m} \levi{i}{j}{k} B_i v_j B_k.\]
+
+<p>Let’s consider the multiplication</p>
+
+\[A = \levi{i}{j}{k} B_i v_j B_k.\]
+
+<p>We can flip the terms since multiplication is commutative</p>
+
+\[A = v_j \levi{i}{j}{k} B_i B_k.
+\label{eq:A_const}
+\tag{8}\]
+
+<p>We know that the product $B_i B_k$ is symmetric under exchange of indices $B_i B_k = B_k B_i$, so we can exchange the indices in $\text{Eq.}~\eqref{eq:A_const}$</p>
+
+\[A = v_j \epsilon_{kji} B_k B_i.\]
+
+<p>Using the permutation property of the Levi-Civita symbol, we see that</p>
+
+\[\epsilon_{kji} = -\levi{i}{j}{k},\]
+
+<p>thus</p>
+
+\[A = -\levi{i}{j}{k} v_j B_i B_k.
+\label{eq:A_const_alt}
+\tag{9}\]
+
+<p>Summing $\text{Eq.}~\eqref{eq:A_const}$ and $\text{Eq.}~\eqref{eq:A_const_alt}$</p>
+
+\[2A = 0 \rightarrow A = 0\]
+
+<p>which means</p>
+
+\[B_i \deriv{v_i}{t} = 0.
+\label{eq:zero_term}
+\tag{10}\]
+
+<p>Let’s look at the total derivative</p>
+
+\[\deriv{}{t}(B_i v_i) = B_i \deriv{v_i}{t} + \deriv{B_i}{t} v_i.\]
+
+<p>We have shown that the first term is zero and the second term must be zero since $\B$ is constant. Therefore,</p>
+
+\[\deriv{}{t}(B_i v_i) = 0 \, \longrightarrow \, B_i v_i = H,\]
+
+<p>where $H$ is a constant. We can determine what $H$ is by using initial conditions</p>
+
+\[H = B_i v_i(0) = B_i v_{i0},\]
+
+<p>thus</p>
+
+\[H = v_{i0} B_i.\]
+
+<p>Plugging this into $\text{Eq.}~\eqref{eq:gen_diff_eq}$</p>
+
+\[\dderiv{v_i}{t} + \Omega^2_c v_i = \Big(\frac{q}{m}\Big)^2 v_{j0} B_j B_i.\]
+
+<p>This is a second order differential equation composed of two parts: the homogenous and particular solution. We write it as</p>
+
+\[v_i(t) = v^{(h)}_i(t) + v^{(p)}_i(t).\]
+
+<p>To solve for the homogenous solution, we first write the characteristic equation using the ansatz $v^{(h)}_i(t) = e^{rt}$ and set the equation equal to zero,</p>
+
+\[e^{rt}(r^2 + \Omega^2_c) = 0\]
+
+<p>Since $e^{rt} \neq 0$, the only solutions are $r = \pm i\Omega_c$. Plugging these back into the ansatz and forming a linear combination of the solutions gives</p>
+
+\[v^{(h)}_i(t) = A \cos(\Omega_c t) + B \sin(\Omega_c t)\]
+
+<p>To solve for the particular solution, we use the ansatz $v^{(p)}_i = K$, where $K$ is a constant. Since $K$ is constant, only the term with no derivative survives,</p>
+
+\[v^{(p)}_i = \Big(\frac{q}{m \Omega_c}\Big)^2 v_{j0} B_j B_i.\]
+
+<p>Substituting for the cyclotron frequency, the full solution becomes</p>
+
+\[v_i(t) = A \cos(\Omega_c t) + B \sin(\Omega_c t) + v_{j0} \frac{B_j B_i}{B_k B_k}.\]
+
+<p>In order to determine the coefficients we impose the boundary condition, $v_i(0) = v_{i0}$, as well as compare both derivative equations at $t=0$. For the first condition,</p>
+
+\[v_i(0) = A + v_{j0} \frac{B_j B_i}{B_k B_k} = v_{i0} \, \longrightarrow \, A = v_{i0} - v_{j0} \frac{B_j B_i}{B_k B_k}.\]
+
+<p>For the second condition,</p>
+
+\[\deriv{v_i}{t} \Big\rvert_{t=0} = B \Omega_c.\]
+
+<p>Referring back to $\text{Eq.}~\eqref{eq:em_force_vel}$, we obtain</p>
+
+\[\deriv{v_i}{t} \Big\rvert_{t=0} = \frac{q}{m} \levi{i}{j}{k} v_{j0} B_k.\]
+
+<p>Setting these two equal to each other gives</p>
+
+\[B = \frac{q}{m \Omega_c} \levi{i}{j}{k} v_{j0} B_k.\]
+
+<p>We can now substitute in the coefficients and rearrange the terms,</p>
+
+\[v_i(t) = v_{i0}\cos(\Omega_c t) + \frac{q}{m \Omega_c} \levi{i}{j}{k} v_{j0} B_k \sin(\Omega_c t) + \frac{q^2}{m^2 \Omega^2_c} v_{j0} B_j B_i \Big[1 - \cos(\Omega_c t)\Big].
+\label{eq:v_i_gen_sol}
+\tag{11}\]
+
+<p>This is the general velocity equation of a charged particle in a magnetic field. Let’s now write the first component of $\text{Eq.}~\eqref{eq:v_i_gen_sol}$,</p>
+
+\[v_1(t) = v_{10}\cos(\Omega_c t) + \frac{q}{m \Omega_c} \levi{1}{j}{k} v_{j0} B_k \sin(\Omega_c t) + \frac{q^2}{m^2 \Omega^2_c} v_{j0} B_j B_1 \Big[1 - \cos(\Omega_c t)\Big].\]
+
+<p>Let’s expand the indices of the different expressions. For the first term we get</p>
+
+\[\levi{1}{j}{k} v_{j0} B_k 
+= \levi{1}{2}{3} v_{20} B_3 + \levi{1}{3}{2} v_{30} B_2 = v_{20} B_3 - v_{30} B_2
+\, \longrightarrow \, v_{y0} B_z - v_{z0} B_y\]
+
+<p>For the next term we get</p>
+
+\[v_{j0} B_j = v_{10} B_1 + v_{20} B_2 + v_{30} B_3 \, \longrightarrow \, \vvec_{0} \cdot \B\]
+
+<p>Now, for the cyclotron frequency</p>
+
+\[\begin{aligned}
+\Omega^2_c ={}&amp; \Big(\frac{q}{m}\Big)^2 B_k B_k 
+= \Big(\frac{q}{m}\Big)^2 (B_1 \cdot B_1 + B_2 \cdot B_2 + B_3 \cdot B_3) \\
+\Omega_c ={}&amp; \frac{q}{m} \sqrt{B^2_x + B^2_y + B^2_z}
+\end{aligned}\]
+
+<p>Plugging the first two expanded terms into $v_1(t)$ and recognizing that $i=1 \rightarrow x$ gives</p>
+
+\[\begin{split}
+v_x(t) ={}&amp; v_{x0}\cos(\Omega_c t) + \frac{q}{m \Omega_c} (v_{y0} B_z - v_{z0} B_y) \sin(\Omega_c t) &amp;+ \frac{q^2}{m^2 \Omega^2_c} (\vvec_{0} \cdot \B) B_x \Big[1 - \cos(\Omega_c t)\Big].
+\end{split}\]
+
+<p>Let’s examine how this equation behaves when there is a magnetic field along the $z$-axis, i.e., $\B = (0, 0, B_0)$. Substituting for $\Omega_c$ in the denominator of the second term, the equation reduces to</p>
+
+\[v_x = v_{x0}\cos(\Omega_c t) + v_{y0}\sin(\Omega_c t).
+\label{eq:v_x_B_sol}
+\tag{12}\]
+
+<p>We can also work out what $v_y$ and $v_z$ are by following the same procedure. In this case,</p>
+
+\[\begin{align}
+v_y ={}&amp; v_{y0}\cos(\Omega_c t) - v_{x0}\sin(\Omega_c t),
+\label{eq:v_y_B_sol}
+\tag{13} \\
+v_z ={}&amp; v_{z0}.
+\end{align}\]
+
+<p>These equations can be written in matrix form as</p>
+
+\[\begin{bmatrix}
+    v_x \\
+    v_y \\
+    v_z
+\end{bmatrix}
+=
+\begin{bmatrix}
+    \cos(\Omega_c t) &amp; \sin(\Omega_c t) &amp; 0\\
+    -\sin(\Omega_c t) &amp; \cos(\Omega_c t) &amp; 0 \\
+    0 &amp; 0 &amp; 1
+\end{bmatrix}
+\begin{bmatrix}
+    v_{x0} \\
+    v_{y0} \\
+    v_{z0}
+\end{bmatrix},\]
+
+<p>or as a matrix equation,</p>
+
+\[\mathbf{v} = R_z(\Omega_c t) \mathbf{v}_0,
+\label{eq:v_B_sol_mat_eq}
+\tag{14}\]
+
+<p>where $R_z(\theta)$ describes a rotation about the $z$-axis. Note that while the rotation matrix used is for a clockwise rotation, the handedness of the rotation is actually defined by the sign on the charge located in the cyclotron frequency, $\Omega_c$. For a negatively charged particle such as an electron, the rotation would be counterclockwise.</p>
+
+<p>The position equation can be derived by integrating $\text{Eq.}~\eqref{eq:v_i_gen_sol}$,</p>
+
+\[\begin{split}
+x_i(t) ={}&amp; x_{i0} + \Big(\frac{v_{i0}}{\Omega_c} - \frac{q^2}{m^2 \Omega^2_c} v_{j0} B_j B_i\Big) \sin(\Omega_c t) \\
+        &amp;+ \frac{q}{m \Omega^2_c} \levi{i}{j}{k} v_{j0} B_k \Big[1 - \cos(\Omega_c t)\Big] + \frac{q^2}{m^2 \Omega_c} v_{j0} B_j B_i t,
+\end{split}
+\label{eq:x_B_gen_sol}
+\tag{15}\]
+
+<p>where we have used the initial condition $x_i(0) = x_{i0}$. For the case where $\B = (0, 0, B_0)$, the position equations are</p>
+
+\[\begin{aligned}
+x ={}&amp; x_0 + \frac{v_{x0}}{\Omega_c}\sin(\Omega_c t) + \frac{v_{y0}}{\Omega_c}\Big[1 - \cos(\Omega_c t)\Big], \\
+y ={}&amp; y_0 + \frac{v_{y0}}{\Omega_c}\sin(\Omega_c t) - \frac{v_{x0}}{\Omega_c}\Big[1 - \cos(\Omega_c t)\Big], \\
+z ={}&amp; z_0 + v_{z0}t.
+\end{aligned}\]
+
+<p>These equations can be written in matrix form as</p>
+
+\[\begin{bmatrix}
+    x \\
+    y \\
+    z
+\end{bmatrix}
+=
+\begin{bmatrix}
+        \frac{1}{\Omega_c}\sin(\Omega_c t) &amp; \frac{1}{\Omega_c}[1 - \cos(\Omega_c t)] &amp; 0\\
+    -\frac{1}{\Omega_c}[1 - \cos(\Omega_c t)] &amp; \frac{1}{\Omega_c}\sin(\Omega_c t) &amp; 0 \\
+    0 &amp; 0 &amp; t
+\end{bmatrix}
+\begin{bmatrix}
+    v_{x0} \\
+    v_{y0} \\
+    v_{z0}
+\end{bmatrix}
++
+\begin{bmatrix}
+    x_0 \\
+    y_0 \\
+    z_0
+\end{bmatrix},\]
+
+<p>or as a matrix equation,</p>
+
+\[\mathbf{x} = \Pi(\Omega_c t) \mathbf{v}_0 + \mathbf{x}_0.
+\label{eq:x_B_sol_mat_eq}
+\tag{16}\]
+
+<p>These equations describe a helical motion along the $xy$-axis with a linear drift along the $z$-axis. We can calculate the radius of the helical trajectory by writing the equations for $x$ and $y$ as a circle</p>
+
+\[\begin{aligned}
+x - x_0 - \frac{v_{y0}}{\Omega_c} ={}&amp; \frac{v_{x0}}{\Omega_c}\sin(\Omega_c t) - \frac{v_{y0}}{\Omega_c}\cos(\Omega_c t), \\
+y - y_0 + \frac{v_{x0}}{\Omega_c} ={}&amp; \frac{v_{y0}}{\Omega_c}\sin(\Omega_c t) + \frac{v_{x0}}{\Omega_c}\cos(\Omega_c t).
+\end{aligned}\]
+
+<p>Now, define $x_c = x_0 + \frac{v_{y0}}{\Omega_c}$ and $y_c = y_0 - \frac{v_{x0}}{\Omega_c}$,</p>
+
+\[\begin{aligned}
+x - x_c ={}&amp; \frac{v_{x0}}{\Omega_c}\sin(\Omega_c t) - \frac{v_{y0}}{\Omega_c}\cos(\Omega_c t), \\
+y - y_c ={}&amp; \frac{v_{y0}}{\Omega_c}\sin(\Omega_c t) + \frac{v_{x0}}{\Omega_c}\cos(\Omega_c t).
+\end{aligned}\]
+
+<p>We can now write these equations in the form of an equation of a circle centered at $(x_c, y_c)$,</p>
+
+\[r^2 = (x - x_c)^2 + (y - y_c)^2.\]
+
+<p>The radius would then be</p>
+
+\[\rho = \sqrt{\Big[\frac{v_{x0}}{\Omega_c}\sin(\Omega_c t) - \frac{v_{y0}}{\Omega_c}\cos(\Omega_c t)\Big]^2 + \Big[\frac{v_{y0}}{\Omega_c}\sin(\Omega_c t) + \frac{v_{x0}}{\Omega_c}\cos(\Omega_c t)\Big]^2}.\]
+
+<p>After some simplification, we get</p>
+
+\[\rho_L = \frac{m}{\abs{q}B_0}\sqrt{v_{x0}^2 + v_{y0}^2}.
+\label{eq:larmor_radius}
+\tag{17}\]
+
+<p>This is known as the Larmor or cyclotron radius. A general solution can be derived from $\text{Eq.}~\eqref{eq:x_B_gen_sol}$. I’ll just state it here for completion</p>
+
+\[\rho_L = \frac{m}{\abs{q}B_0}\sqrt{v_{i0}v_{i0} - \frac{(v_{j0}B_j)^2}{B_k B_k}}.
+\label{eq:larmor_radius_general}
+\tag{18}\]
+
+<h2 id="energy-conservation">Energy conservation</h2>
+<p>To determine if the energy is conserved, we need to check that</p>
+
+\[\deriv{E}{t} = \deriv{K}{t} + \deriv{U}{t} = 0.\]
+
+<p>where $K$ is the kinetic energy and $U$ is the potential energy. In this case, all the energy is kinetic so $U = 0$. We can then differentiate the kinetic energy,</p>
+
+\[\deriv{K}{t} = \frac{1}{2} m \deriv{}{t}(v_i v_i) = \frac{1}{2} m \Bigg(\deriv{v_i}{t} v_i + v_i\deriv{v_i}{t} \Bigg) = m v_i \deriv{v_i}{t}.\]
+
+<p>Plugging $\text{Eq.}~\eqref{eq:em_force}$ into the equation above</p>
+
+\[\deriv{E}{t} = q v_i (E_i + \levi{i}{j}{k} v_j B_k).\]
+
+<p>Using a very similar process to obtain $\text{Eq.}~\eqref{eq:zero_term}$, we can show that $\levi{i}{j}{k} v_i v_j B_k = 0$ by exchanging the indices $i \leftrightarrow j$. The equation then becomes</p>
+
+\[\deriv{K}{t} = q v_i E_i.
+\label{eq:cons_energy}
+\tag{19}\]
+
+<p>This equation tells us that the energy of a moving charged particle is conserved only if $\E = 0$. If $\E \neq 0$, the electric field is constantly transferring or removing energy from the particle, leading to the energy not being conserved.</p>
+
+<h2 id="velocity-components">Velocity components</h2>
+<p>We can also write the velocity in terms of the components parallel and perpendicular to the magnetic field. Let’s rewrite $\text{Eq.}~\eqref{eq:v_i_gen_sol}$ and substitute for the cyclotron frequency on the last term,</p>
+
+\[v_i(t) = v_{i0}\cos(\Omega_c t) + \frac{q}{m \Omega_c} \levi{i}{j}{k} v_{j0} B_k \sin(\Omega_c t) + \frac{v_{j0} B_j}{B_k B_k} B_i \Big[1 - \cos(\Omega_c t)\Big].
+\label{eq:v_i_gen_sol_alt}
+\tag{20}\]
+
+<p>The parallel velocity is defined as</p>
+
+\[v_{\parallel}(t) = v_i(t) \cdot \hat{b} = \frac{v_i(t) B_i}{B},
+\label{eq:v_parallel_def}
+\tag{21}\]
+
+<p>which is described as the velocity projected onto the magnetic field. We take the dot product of $\text{Eq.}~\eqref{eq:v_i_gen_sol_alt}$ with $B_i$ and noting that we’ve already shown the second term to be zero in <a href="#case-1-no-magnetic-field">Case 1: No Magnetic Field</a>,</p>
+
+\[v_i(t) B_i = v_{i0}B_i\cos(\Omega_c t) + \frac{v_{j0} B_j}{B_k B_k} B_i B_i \Big[1 - \cos(\Omega_c t)\Big].\]
+
+<p>This can be further simplied to</p>
+
+\[v_i(t) B_i = v_{i0}B_i\cos(\Omega_c t) + v_{j0} B_j\Big[1 - \cos(\Omega_c t)\Big]\]
+
+<p>by cancelling the dot product terms. Since the combinations of $v_0$ and $B$ are dot products, we can relabel the dummy indices, which gives us</p>
+
+\[v_i(t) B_i = v_{j0}B_j.\]
+
+<p>From $\text{Eq.}~\eqref{eq:v_parallel_def}$ we can show that</p>
+
+\[v_{\parallel}(t) = \frac{v_{j0}B_j}{B} = v_{\parallel 0},
+\label{eq:v_parallel_scalar}
+\tag{22}\]
+
+<p>which shows that $v_{\parallel}$ is constant and cannot be changed by a uniform magnetic field. Its vector form can be written as</p>
+
+\[v_{\parallel i}(t) = \frac{v_{j0}B_j}{B^2} B_i.
+\label{eq:v_parallel_vector}
+\tag{23}\]
+
+<p>The perpendicular velocity is defined as</p>
+
+\[v_{\perp i}(t) = v_i(t) - v_{\perp i}(t).
+\label{eq:v_perp_def}
+\tag{24}\]
+
+<p>This gives the following general form for $v_{\perp}$</p>
+
+\[v_{\perp i}(t) = \Big[ v_{i0} - \frac{v_{j0} B_j B_i}{B^2} \Big] \cos(\Omega_c t) + \frac{q}{m \Omega_c}\levi{i}{j}{k} v_{j0} B_k \sin(\Omega_c t).\]
+
+<p>Evaluating the solution using the same initial conditions as in <a href="#case-2-no-electric-field">Case 2: No Electric Field</a>,</p>
+
+\[v_{\perp i}(0) = v_{i0} - \frac{v_{j0} B_j B_i}{B^2} = v_{\perp i 0}.
+\label{eq:v_perp_scalar}
+\tag{25}\]
+
+<p>The equation then takes the form</p>
+
+\[v_{\perp i}(t) = v_{\perp i 0} \cos(\Omega_c t) + \frac{q}{m \Omega_c}\levi{i}{j}{k} v_{j0} B_k \sin(\Omega_c t).\]
+
+<p>The second term can also be written in terms of these velocities. First, we recognize that</p>
+
+\[v_{j0} = v_{\perp j 0} + v_{\parallel j 0}.\]
+
+<p>Now, we can write</p>
+
+\[\begin{aligned}
+\levi{i}{j}{k} v_{j0} B_k ={}&amp; \levi{i}{j}{k} (v_{\perp j 0} + v_{\parallel j 0}) B_k, \\
+={}&amp; \levi{i}{j}{k} v_{\perp j 0} B_k + \levi{i}{j}{k} v_{\parallel j 0} B_k.
+\end{aligned}\]
+
+<p>The second term will introduce a $B_j$ term through $v_{\parallel j 0}$, which we’ve already shown is zero, i.e., $\levi{i}{j}{k} B_j B_k = 0$. Thus,</p>
+
+\[v_{\perp i}(t) = v_{\perp i 0} \cos(\Omega_c t) + \frac{q}{m \Omega_c}\levi{i}{j}{k} v_{\perp j 0} B_k \sin(\Omega_c t).
+\label{eq:v_perp_vector}
+\tag{26}\]
+
+<p>We can also show that $v_{\perp}$ is constant by using $\text{Eq.}~\eqref{eq:v_perp_def}$</p>
+
+\[v_{\perp i} = v_i - v_{\parallel i} \, \longrightarrow \, v^2_{\perp i} = v^2_i - v^2_{\parallel i},\]
+
+<p>since the cross terms are zero due to the components being orthogonal. In <a href="#energy-conservation">Energy-Conservation</a>, we showed that $\deriv{K}{t} = 0$ when there is no electric field. Plugging in the equation for kinetic energy shows that,</p>
+
+\[\deriv{}{t} (v_i v_i) = 0 \, \longrightarrow \, v^2_i = \text{constant},\]
+
+<p>therefore,</p>
+
+\[\begin{aligned}
+v^2_{\perp}(t) ={}&amp; v_{i0} v_{i0} - \frac{(v_{j0}B_j)^2}{B_k B_k}, \\
+\abs{v_{\perp}(t)} ={}&amp; \sqrt{v_{i0} v_{i0} - \frac{(v_{j0}B_j)^2}{B_k B_k}} = v_{\perp 0}.
+\end{aligned}\]
+
+<p>The magnitude of the velocity can also be calculated using $\text{Eq.}~\eqref{eq:v_parallel_scalar}$ and $\text{Eq.}~\eqref{eq:v_perp_scalar}$,</p>
+
+\[\abs{v_i} = \sqrt{v_{i0} v_{i0} - \frac{(v_j B_j)^2}{B_k B_k}} + \frac{v_{j0} B_j}{B}.\]
+
+<p>Looking back at the definition of the Larmor radius we derived at the end of <a href="#case-2-no-electric-field">Case 2: No Electric Field</a>, we see that the expression in the square root is exactly $v^2_{\perp}(t)$. We can now write the Larmor radius as</p>
+
+\[\rho_L = \frac{v_{\perp 0}}{\Omega_c}.
+\label{eq:larmor_radius_general_vel_perp}
+\tag{27}\]
+
+<p>We have now gone over the derivation of the dynamics of a charged particle in a magnetic field. We showed the general solutions under two limiting cases, in what scenarios the energy is conserved, and how the equations can be written in terms of the parallel and perpendicular velocity components.</p>
+
+<p>The code presented in this post can be found on my Github under the <a href="https://github.com/AJG91/charged_particle_dynamics" title="cpd-repo">charged-particle-dynamics</a> repo <a class="citation" href="#Garcia2026CPD">[1]</a>. Feel free to reach out if you have any questions about what we covered this week. Next time we will go over some numerical methods and present numerical results for a charged particle in a magnetic field. Stay tuned!</p>
+
+<ol class="bibliography"><li><span id="Garcia2026CPD">[1] Alberto J. Garcia, <i>The Dynamics of a Charged Particle in an Electromagnetic Field</i>, 2026. Available at: https://github.com/AJG91/charged-particle-dynamics.</span></li></ol>
+<p><a href="/" class="btn">⬅ Back to Home</a></p>
+
+        
+      </section>
+
+      <footer class="page__meta">
+        
+        
+
+
+        
+
+  <p class="page__date"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Updated:</strong> <time class="dt-published" datetime="2026-11-08T00:00:00-08:00">November 8, 2026</time></p>
+
+      </footer>
+
+      
+
+      
+  <nav class="pagination">
+    
+      <a href="/posts/large-language-models/lora-adapter/" class="pagination--pager" title="LoRA model: Adapting GPT-2">Previous</a>
+    
+    
+      <a href="#" class="pagination--pager disabled">Next</a>
+    
+  </nav>
+
+
+    </div>
+
+    
+  </article>
+
+  
+  
+</div>
+
+      
+    </div>
+
+    
+
+    <div id="footer" class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        
+
+<div class="page__footer-follow">
+  <ul class="social-icons">
+    
+
+    
+
+    
+      <li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+    
+  </ul>
+</div>
+
+
+<div class="page__footer-copyright">&copy; 2026 <a href="https://ajg91.github.io/">AJG&#39;s Homepage</a>. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/jekyll-themes/minimal-mistakes/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+
+  </body>
+</html>
