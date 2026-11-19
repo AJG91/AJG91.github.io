@@ -1,0 +1,620 @@
+<!doctype html>
+<!--
+  Minimal Mistakes Jekyll Theme 4.27.3 by Michael Rose
+  Copyright 2013-2025 Michael Rose - mademistakes.com | @mmistakes
+  Free for personal and commercial use under the MIT license
+  https://github.com/mmistakes/minimal-mistakes/blob/master/LICENSE
+-->
+
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+
+<!-- begin _includes/seo.html --><title>Charged Particle Dynamics: Numerical Results - AJG’s Homepage</title>
+<meta name="description" content="This week I will introduce two numerical integrators, discuss some of their properties, develop a simulation of a particle in a specific electromagnetic field configuration, and analyze the results. We will be using the integrators to solve the equations introduced in the previous post.  Computational Methods In order to solve the Lorentz force equation numerically, we must implement an integrator. First, let’s rewrite the Lorentz force,  [\deriv{v_i}{t} = \frac{q}{m} (E_i + \levi{i}{j}{k} v_j B_k). \label{eq:em_force_vel} \tag{1}]  Now, I will go over a few numerical integrator options:  Forward Euler Method This is a first-order method and is considered to be the most basic method for numerical integration of differential equations. Since it is first-order, the truncation error is second-order. We can derive the method by applying a Taylor expansion of $y(t)$ about $t_n$  [y(t_n + \delta t) \approx y(t_n) + \delta t y^\prime (t_n) + \mathcal{O}(\delta t^2).]  Defining $y_{n+1} = y(t_n + \delta t)$ and substituting in the general form of a first-order differential equation, $y^\prime(t_n) = f(t_n, y_n)$ yields  [y_{n+1} \approx y(t_n) + \delta t f(t_n, y_n).]  This approximation has a first-order global error since it’s linear, which is why it’s known as a first-order method.  Let’s understand how the energy behaves with this integrator. Referring back at $\text{Eq.}~\eqref{eq:em_force_vel}$ and assuming $\E = 0$ and $\B$ is constant, we can write  [\vvec_{n+1} = \vvec_n + \frac{q \Delta t}{m} (\vvec_n \times \B). \label{eq:vel_forward_step_general} \tag{2}]  The change in kinetic energy between timesteps can also be written as  [K_{n+1} - K_n = \frac{1}{2}m \Big(\lVert \vvec_{n+1} \rVert^2 - \lVert \vvec_{n} \rVert^2\Big). \label{eq:kinetic_energy_diff} \tag{3}]  Then, the $\vvec_{n+1}$ term becomes  [\lVert \vvec_{n+1} \rVert^2 = \lVert \vvec_{n} \rVert^2 + \Big(\frac{q \Delta t}{m}\Big)^2 \lVert \vvec_{n} \times \B \rVert^2, \label{eq:vel_forward_step} \tag{4}]  where the cross term cancels out since the dot product is zero. Now, $\text{Eq.}~\eqref{eq:kinetic_energy_diff}$ becomes  [K_{n+1} - K_n = \frac{1}{2} \frac{q^2 \Delta t^2}{m} \lVert \vvec_{n} \times \B \rVert^2 \ge 0. \label{eq:diff_kinetic_energy} \tag{5}]  From $\text{Eq.}~\eqref{eq:diff_kinetic_energy}$, we conclude that the kinetic energy will always increase with each consecutive time step. This is not a physical property, but a numerical property brought on by the intergrator we chose. We can also determine the overall shape of the kinetic energy over time. To do this, we split the velocity into the parallel and perpendicular components and plug them into the kinetic energy  [K_n = \frac{1}{2}m \Big(\lVert \vvec_{\parallel, n} \rVert^2 + \lVert \vvec_{\perp, n} \rVert^2\Big), \label{eq:kinetic_energy_para_perp_vel} \tag{6}]  where the cross terms cancel since $\vvec_{\parallel, n} \cdot \vvec_{\perp, n} = 0$. We can now focus on the $\vvec_{\perp, n}$ terms since the parallel terms conserve energy throughout the trajectory. Thus,  [K_{\perp, n} = \frac{1}{2}m \lVert \vvec_{\perp, n} \rVert^2, \label{eq:kinetic_energy_perp_vel} \tag{7}]  We can also write $\text{Eq.}~\eqref{eq:vel_forward_step}$ in terms of the components,  [\lVert \vvec_{\parallel, n+1} + \vvec_{\perp, n+1} \rVert^2 = \big(\vvec_{\parallel, n} + \vvec_{\perp, n}\big) + \Big(\frac{q \Delta t}{m}\Big)^2 \lVert \big(\vvec_{\parallel, n} + \vvec_{\perp, n}\big) \times \B \rVert^2.]  Cancelling out the dot product between velocities and cross product between $\vvec_{\parallel, n}$ and $\B$, and substituting for the cyclotron frequency, we obtain  [\begin{aligned} \lVert \vvec_{\parallel, n+1} \rVert^2 ={}&amp; \lVert \vvec_{\parallel, n} \rVert^2,  \lVert \vvec_{\perp, n+1} \rVert^2 ={}&amp; \Big(1 + \Delta t^2 \omega^2c \Big) \lVert \vvec{\perp, n} \rVert^2. \end{aligned}]  As with $\text{Eq.}~\eqref{eq:diff_kinetic_energy}$, these equations also show that the kinetic energy has to increase. Focusing on the perpendicular term, by taking consequtive timesteps, we can show that the following relationship holds:  [\lVert \vvec_{\perp, n+1} \rVert^2 = \Big(1 + \Delta t^2 \omega^2c \Big)^{t / \Delta t+1} \lVert \vvec{\perp, 0} \rVert^2.]  With this equation and the kinetic energy equation, we can write  [K_{\perp, n} = \Big(1 + \Delta t^2 \omega^2c \Big)^{t / \Delta t} K{\perp, 0},]  where we have shifted $n$ by one without loss of generality. Taking the natural log of both sides yields  [\ln\Bigg( \frac{K_{\perp, n}}{K_{\perp, 0}} \Bigg) = \frac{t}{\Delta t} \ln \Big(1 + \Delta t^2 \omega^2_c \Big).]  If $\Delta t^2 \omega^2_c \ll 1$, we can expand the natural log,  [\ln\Bigg( \frac{K_{\perp, n}}{K_{\perp, 0}} \Bigg) = \frac{t}{\Delta t} \Big(\Delta t^2 \omega^2_c \Big),]  and thus  [K_{\perp, n} \approx K_{\perp, 0}\exp^{t \Delta t \omega^2_c}. \label{eq:euler_ke} \tag{8}]  From $\text{Eq.}~\eqref{eq:euler_ke}$, we can draw the conclusion that as time goes on, the kinetic energy calculated from Euler method solutions will increase exponentially. Likewise, for small timesteps, the kinetic energy will increase linearly. This tells us that while the Euler method may provide decent solutions for small values of $\Delta t$ and short time periods, the kinetic energy will greatly increase as larger values of $\Delta t$ are chosen and/or for large time periods, which will result in an increasing inaccuracy in the Forward Euler method solutions.  Runge-Kutta Method The Runge-Kutta Method is one of the most well-known algorithms used to solve ordinary differential equation. The most common version of the Runge-Kutta method is the fourth-order Runge-Kutta (a.k.a. RK4). For comparisons, the Forward Euler Method is a first-order Runge-Kutta method. I’ll only list the method here.  The implementation of the RK4 is as follows:  For $y^\prime = f(y)$,  [y_{n+1} = y_n + \frac{\Delta t}{6} (k_1 + 2 k_2 + 2 k_3 + k_4), \label{eq:rk4_eq} \tag{9}]  where  [\begin{align} k_1 ={}&amp; f(y_n),  k_2 ={}&amp; f\Big(y_n + \frac{\Delta t}{2}k_1\Big),  k_3 ={}&amp; f\Big(y_n + \frac{\Delta t}{2}k_2\Big),  k_4 ={}&amp; f(y_n + \Delta t k_3). \end{align}]  Just like with the Forward Euler method, we can show how the energy behaves when utilizing this integrator. We write $\text{Eq.}~\eqref{eq:em_force_vel}$ as  [A\vvec = \frac{q}{m} \vvec \times \B, \label{eq:lorentz_force_operator} \tag{10}]  where $A$ is a linear operator, thus  [\deriv{\vvec}{t} = A\vvec.]  Here, $A^T = -A$ due to the property of the cross product. Let’s write out the RK4. Since we assume $\E = 0$ and $\B$ is constant, the different $k$ values take the following form:  [\begin{aligned} k_1 ={}&amp; A\vvec_n,  k_2 ={}&amp; A\vvec_n + A^2 \frac{\Delta t}{2} \vvec_n,  k_3 ={}&amp; A\vvec_n + A^2 \frac{\Delta t}{2} \vvec_n + A^3 \frac{\Delta t^2}{4} \vvec_n,  k_4 ={}&amp; A\vvec_n + A^2 \frac{\Delta t}{2} \vvec_n + A^3 \frac{\Delta t^2}{4} \vvec_n + A^4 \frac{\Delta t^3}{4} \vvec_n. \end{aligned}]  Plugging these into $\text{Eq.}~\eqref{eq:rk4_eq}$ and simplifying, we obtain  [\vvec_{n+1} = \Big(\mathbf{I} + \Delta t A + \frac{\Delta t^2}{2!}A^2 + \frac{\Delta t^3}{3!}A^3 + \frac{\Delta t^4}{4!}A^4 \Big) \vvec_n. \label{eq:rk4_vel_expansion} \tag{11}]  For simplicity, we can write $\text{Eq.}~\eqref{eq:rk4_vel_expansion}$ as  [\vvec_{n+1} = \Lambda \vvec_n, \label{eq:rk4_vel_expansion_operator} \tag{12}]  where $\Lambda$ is a linear operator. We now take $\text{Eq.}~\eqref{eq:kinetic_energy_diff}$ and substitute $\text{Eq.}~\eqref{eq:rk4_vel_expansion_operator}$, which yields  [K_{n+1} - K_n = \frac{1}{2}m \vvec^T_n \big(\Lambda^T\Lambda - \mathbf{I} \big)\vvec_n.]  We can work out the distribution of $\Lambda^T\Lambda$ by using the fact that $A^T = -A$. This works out to be  [\Lambda^T\Lambda - \mathbf{I} = \frac{\Delta t^6}{72}A^6 + \frac{\Delta t^8}{576}A^8,]  which then gives  [K_{n+1} - K_n = \frac{1}{2}m \vvec^T_n \Big(\frac{\Delta t^6}{72}A^6 + \frac{\Delta t^8}{576}A^8 \Big)\vvec_n. \label{eq:kinetic_energy_diff_rk4} \tag{13}]  Now, we must work out what the different powers of $A$ are. Going back to $\text{Eq.}~\eqref{eq:lorentz_force_operator}$, we multiply both sides by $A$,  [\begin{split} A(A\vvec) ={}&amp; \frac{q}{m} (A\vvec) \times \B = \frac{q}{m} \Big[\frac{q}{m}\vvec \times \B \Big] \times \B,  ={}&amp; \frac{q^2}{m^2} \Big[\B(\vvec \cdot \B) - \vvec (\B \cdot \B) \Big]. \end{split}]  We multiply both sides by $A$ once more,  [\begin{split} A(A^2\vvec) ={}&amp; \frac{q^3}{m^3} \Big[\B(\vvec \cdot \B) - \vvec (\B \cdot \B) \Big] \times \B,  ={}&amp; \frac{q^3}{m^3} \Big[(\vvec \cdot \B) (\B \times \B) - (\B \cdot \B) (\vvec \times \B) \Big],  ={}&amp; -\frac{q^3}{m^3} B^2 (\vvec \times \B),  ={}&amp; -\frac{q^2 B^2}{m^2} \Big[\frac{q}{m} (\vvec \times \B)\Big]. \end{split}]  Substituting in for the cyclotron frequency and recognizing that we’re obtained $\text{Eq.}~\eqref{eq:lorentz_force_operator}$ once again, we can write  [A^3\vvec = -\omega^2_c A\vvec.]  This relationship implies that  [A^8\vvec = -\omega^2_c A^6\vvec]  since we can multiply both sides by $A^5$. $\text{Eq.}~\eqref{eq:kinetic_energy_diff_rk4}$ then becomes  [K_{n+1} - K_n = \frac{m \Delta t^6}{144} \Big(1 - \frac{\omega^2_c\Delta t^2}{8}\Big)\vvec^T_n A^6 \vvec_n. \label{eq:kinetic_energy_diff_rk4_with_A} \tag{14}]  The combination of $\vvec$ and $A$ can be written as  [\vvec^T_n A^6 \vvec_n = -(A^3 \vvec_n)^T(A^3 \vvec_n) = -\lVert A^3 \vvec_n \rVert^2 = \omega^4_c \Big\lVert \frac{q}{m} (\vvec_n \times \B) \Big\rVert^2,]  thus,  [K_{n+1} - K_n = -\frac{m \omega^4_c \Delta t^6}{144} \Big(1 - \frac{\omega^2_c\Delta t^2}{8}\Big) \Big\lVert \frac{q}{m} (\vvec_n \times \B) \Big\rVert^2.]  We can now separate out the velocity in terms of parallel and perpendicular components. Since the parallel component crossed with the magnetic field is zero, we are left with  [K_{n+1} - K_n = -\frac{m \omega^6c \Delta t^6}{144} \Big(1 - \frac{\omega^2_c\Delta t^2}{8}\Big) \lVert \vvec{\perp, n} \rVert^2. \label{eq:rkfour_ke} \tag{15}]  From $\text{Eq.}~\eqref{eq:rkfour_ke}$, we can consider multiple cases:     Case 1: $\frac{\omega^2_c\Delta t^2}{8} = 1$,   Case 2: $\frac{\omega^2_c\Delta t^2}{8} &gt; 1$,   Case 3: $\frac{\omega^2_c\Delta t^2}{8} &lt; 1$.   For case 1, $\text{Eq.}~\eqref{eq:rkfour_ke}$ becomes $K_{n+1} = K_n$ and we obtain conservation of energy. Note that while the kinetic energy is conserved, this does not mean that the trajectory is correct since the direction of the velocity is not accounted for in $\text{Eq.}~\eqref{eq:rkfour_ke}$. Another way for the system to conserve energy would be if $\vvec_{\perp, n} = 0$. This would mean that the particle only has parallel velocity, which corresponds to a constant planar velocity (hence conservation of energy) as discussed in the blog post last week.  For case 2, we would get an increasing kinetic energy as time passes. As with the Forward Euler method, this is not a physical property, but a numerical property brought on by the intergrator we chose. The RK4 solution is unstable due to either a large cyclotron frequency or a large timestep, which introduces a small error in the form of a numerical increase in the perpendicular velocity at every timestep. For both scenarios, the timestep has to be adjusted to correctly account for the motion caused by the magnetic field, thus moving the system towards case 1 or 3. If the timestep is too large, then the gyration will not be properly accounted for, causing the RK4 to provide an inadequate solution.  For case 3, we obtain a decreasing kinetic energy as time moves forward. This implies that the integrator is not reproducing the exactly circular trajectory, but instead introduces a small error in the form of a numerical reduction in the perpendicular velocity at every timestep. As before, this is not a physical property, but a numerical property brought on by the intergrator we chose. Note that for relatively short time periods this is not an issue and the RK4 provides a very good solution. A decreasing perpendicular velocity will only be apparent in the RK4 solutions if we take thousands of iterations.  Results We will be solving the Lorentz force equation for a charged particle in a specific electromagnetic field configuration. The initial conditions are:     $\xvec_0 = \langle 0, 0, 0 \rangle$ [m],   $\vvec_0 = \langle 1, 0, 0 \rangle$ [m/s],   $\E = \langle 0, 0, 0 \rangle$ [N/C],   $\B = \langle 0, 0, 1 \rangle$ [T].   We assume normalized units, i.e., $q = 1$ and $m = 1$. The timesteps we will use are $\Delta t = [0.1, 0.05, 0.01, 0.005]$ and the simulation will run over $4$ cycles.  In Fig. 1 we show the exact and numerical solutions to the Lorentz force and the gyro-motion for timestep $dt = 0.01$ using the Forward Euler method integrator. The top row shows the position, the middle row the velocity, and the bottom row the absolute error between the exact solution and the numerical solution from the Euler method. In Fig. 2, we show the same quantities, but for timestep $dt = 0.1$.     Figure 1: Euler method solutions with errors with timestep $dt = 0.01$.     Figure 2: Euler method solutions with errors with timestep $dt = 0.1$.  As discussed in Computational Methods, the Forward Euler method begins to lose accuracy as time goes on. This is evident from the plots on the left that show the position and velocity versus time. Initially, the position starts off well-approximated, but as more cycles are completed, the numerical velocity and position solutions begin to overshoot the exact solution. This is also evident by the plots on the right that show $y$ vs. $x$ and $v_y$ vs. $v_x$. The particle begins to spiral out of the expected circular trajectory. As the timestep increases, the inaccuracies greatly increase and the particle completely leave the exact trajectory. If we look at the bottom row of plots, the signed residual oscillates and the amplitudes of the oscillations slowly start growing as the particle travels more cycles.     Figure 3: Kinetic energy calculated using the Euler method solutions for two different timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$.  In Fig. 3, we show the absolute, relative, and residual error of the kinetic energy calculated using the Forward Euler method integrator for both timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$. The residual error is signed, as opposed to the absolute and relative errors. As discussed in Computational Methods, the kinetic energy increases as times goes on. For the smaller timestep (top plots), the kinetic energy appears linear. For the larger timestep (bottom plots), the kinetic energy now takes an increasing exponential form. This is exactly what we derived from the Forward Euler method integrator. The absolute and relative errors show the same conclusion.     Figure 4: RK4 method solutions with errors with timestep $dt = 0.01$.     Figure 5: RK4 method solutions with errors with timestep $dt = 0.1$.  In Fig. 4, we show the exact and numerical solutions to the Lorentz force and the gyro-motion for timestep $dt = 0.01$ using the RK4 integrator. The top row shows the position, the middle row the velocity, and the bottom row the absolute error between the exact solution and the numerical solution from the RK4 method. In Fig. 5, we show the same quantities, but for timestep $dt = 0.1$.  As discussed in Computational Methods, the RK4 method provides stable solutions for our system throughout the time period we chose. The absolute errors are on order of $10^{-9}$ for timestep $dt = 0.01$. For the timestep $dt=0.1$, the absolute errors do fall to $10^{-5}$. Although the solutions are still fairly accurate, this decrease in accuracy is exactly what we predicted in Computational Methods as the timestep increases.     Figure 6: Kinetic energy calculated using the RK4 method solutions for two different timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$.  In Fig. 6, we show the absolute, relative, and residual error of the kinetic energy calculated using the RK4 method integrator for both timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$. As previously mentioned, the residual error is signed, as opposed to the absolute and relative errors. From the plots, we see that the kinetic energy does indeed decrease with consecutive time steps. As we predicted, the accuracy decreases as we increase the timestep. The error for the timestep $dt = 0.01$ is on the order of $10^{-12}$, while the error for the timestep $dt = 0.1$ is on the order of $10^{-7}$. This shows that the RK4 provides much more accurate solutions compared to the Forward Euler method.    Figure 7: Integrator convergence.  In Fig. 7, we show the convergence of the different integrators. For comparison purposes, we also included an additional integrator known as the Heun method. This is a second-order method that improves upon the Euler method and can be derived from the general RK4 method. The figure plots the natural logarithm of the maximum positional error versus the natural logarithm of the timestep size to determine the specified numerical method’s order of convergence. We have also drawn a best-fit line.  In general, the slope of the best-fit line in log-log space should be $\sim 1$ for a first-order method, $\sim 2$ for a second-order method, and $\sim 4$ for a fourth-order method. From the figure, we see that the best-fit lines for the Heun and RK4 methods do in fact have the appropriate slopes, which we denote as $p$. On the other hand, the slope of the best-fit line for Euler’s method is not quite $1$, but this is due to the inaccuracies introduced due to the timestep size and the number of cycles as we discussed in Computational Methods and as the error plots have shown. Overall, these results confirm that our integrators work as expected.  Summary We have introduced two different integrators for solving differential equations and explored some of their properties. We developed a simulation of a charged particle in a specific electromagnetic field configuration and solved the Lorentz force over different timesteps and analyzed the results. Finally, we plotted the convergence of the different integrators to verify that they were working correctly.  Overall, we verified that our simulation accurately reproduced the physical behavior predicted by our theoretical derivations. We also confirmed that the integrators exhibited the expected properties. These results provide a solid foundation for applying these numerical methods to more complex physical systems in future simulations.  The code presented in this post can be found on my Github under the charged-particle-dynamics repo [1]. A PDF version of these this and last week’s post can be found in Ch. 1 of my computational plasma physics notes. Feel free to reach out if you have any questions about what we covered this week. Stay tuned for the next topic!  [1] Alberto J. Garcia, The Dynamics of a Charged Particle in an Electromagnetic Field, 2026. Available at: https://github.com/AJG91/charged-particle-dynamics. ⬅ Back to Home">
+
+
+
+<meta property="og:type" content="article">
+<meta property="og:locale" content="en_US">
+<meta property="og:site_name" content="AJG&#39;s Homepage">
+<meta property="og:title" content="Charged Particle Dynamics: Numerical Results">
+<meta property="og:url" content="https://ajg91.github.io//posts/computational-physics/plasma-physics/charged_particle_dynamics_numercal_results/">
+
+
+  <meta property="og:description" content="This week I will introduce two numerical integrators, discuss some of their properties, develop a simulation of a particle in a specific electromagnetic field configuration, and analyze the results. We will be using the integrators to solve the equations introduced in the previous post.  Computational Methods In order to solve the Lorentz force equation numerically, we must implement an integrator. First, let’s rewrite the Lorentz force,  [\deriv{v_i}{t} = \frac{q}{m} (E_i + \levi{i}{j}{k} v_j B_k). \label{eq:em_force_vel} \tag{1}]  Now, I will go over a few numerical integrator options:  Forward Euler Method This is a first-order method and is considered to be the most basic method for numerical integration of differential equations. Since it is first-order, the truncation error is second-order. We can derive the method by applying a Taylor expansion of $y(t)$ about $t_n$  [y(t_n + \delta t) \approx y(t_n) + \delta t y^\prime (t_n) + \mathcal{O}(\delta t^2).]  Defining $y_{n+1} = y(t_n + \delta t)$ and substituting in the general form of a first-order differential equation, $y^\prime(t_n) = f(t_n, y_n)$ yields  [y_{n+1} \approx y(t_n) + \delta t f(t_n, y_n).]  This approximation has a first-order global error since it’s linear, which is why it’s known as a first-order method.  Let’s understand how the energy behaves with this integrator. Referring back at $\text{Eq.}~\eqref{eq:em_force_vel}$ and assuming $\E = 0$ and $\B$ is constant, we can write  [\vvec_{n+1} = \vvec_n + \frac{q \Delta t}{m} (\vvec_n \times \B). \label{eq:vel_forward_step_general} \tag{2}]  The change in kinetic energy between timesteps can also be written as  [K_{n+1} - K_n = \frac{1}{2}m \Big(\lVert \vvec_{n+1} \rVert^2 - \lVert \vvec_{n} \rVert^2\Big). \label{eq:kinetic_energy_diff} \tag{3}]  Then, the $\vvec_{n+1}$ term becomes  [\lVert \vvec_{n+1} \rVert^2 = \lVert \vvec_{n} \rVert^2 + \Big(\frac{q \Delta t}{m}\Big)^2 \lVert \vvec_{n} \times \B \rVert^2, \label{eq:vel_forward_step} \tag{4}]  where the cross term cancels out since the dot product is zero. Now, $\text{Eq.}~\eqref{eq:kinetic_energy_diff}$ becomes  [K_{n+1} - K_n = \frac{1}{2} \frac{q^2 \Delta t^2}{m} \lVert \vvec_{n} \times \B \rVert^2 \ge 0. \label{eq:diff_kinetic_energy} \tag{5}]  From $\text{Eq.}~\eqref{eq:diff_kinetic_energy}$, we conclude that the kinetic energy will always increase with each consecutive time step. This is not a physical property, but a numerical property brought on by the intergrator we chose. We can also determine the overall shape of the kinetic energy over time. To do this, we split the velocity into the parallel and perpendicular components and plug them into the kinetic energy  [K_n = \frac{1}{2}m \Big(\lVert \vvec_{\parallel, n} \rVert^2 + \lVert \vvec_{\perp, n} \rVert^2\Big), \label{eq:kinetic_energy_para_perp_vel} \tag{6}]  where the cross terms cancel since $\vvec_{\parallel, n} \cdot \vvec_{\perp, n} = 0$. We can now focus on the $\vvec_{\perp, n}$ terms since the parallel terms conserve energy throughout the trajectory. Thus,  [K_{\perp, n} = \frac{1}{2}m \lVert \vvec_{\perp, n} \rVert^2, \label{eq:kinetic_energy_perp_vel} \tag{7}]  We can also write $\text{Eq.}~\eqref{eq:vel_forward_step}$ in terms of the components,  [\lVert \vvec_{\parallel, n+1} + \vvec_{\perp, n+1} \rVert^2 = \big(\vvec_{\parallel, n} + \vvec_{\perp, n}\big) + \Big(\frac{q \Delta t}{m}\Big)^2 \lVert \big(\vvec_{\parallel, n} + \vvec_{\perp, n}\big) \times \B \rVert^2.]  Cancelling out the dot product between velocities and cross product between $\vvec_{\parallel, n}$ and $\B$, and substituting for the cyclotron frequency, we obtain  [\begin{aligned} \lVert \vvec_{\parallel, n+1} \rVert^2 ={}&amp; \lVert \vvec_{\parallel, n} \rVert^2,  \lVert \vvec_{\perp, n+1} \rVert^2 ={}&amp; \Big(1 + \Delta t^2 \omega^2c \Big) \lVert \vvec{\perp, n} \rVert^2. \end{aligned}]  As with $\text{Eq.}~\eqref{eq:diff_kinetic_energy}$, these equations also show that the kinetic energy has to increase. Focusing on the perpendicular term, by taking consequtive timesteps, we can show that the following relationship holds:  [\lVert \vvec_{\perp, n+1} \rVert^2 = \Big(1 + \Delta t^2 \omega^2c \Big)^{t / \Delta t+1} \lVert \vvec{\perp, 0} \rVert^2.]  With this equation and the kinetic energy equation, we can write  [K_{\perp, n} = \Big(1 + \Delta t^2 \omega^2c \Big)^{t / \Delta t} K{\perp, 0},]  where we have shifted $n$ by one without loss of generality. Taking the natural log of both sides yields  [\ln\Bigg( \frac{K_{\perp, n}}{K_{\perp, 0}} \Bigg) = \frac{t}{\Delta t} \ln \Big(1 + \Delta t^2 \omega^2_c \Big).]  If $\Delta t^2 \omega^2_c \ll 1$, we can expand the natural log,  [\ln\Bigg( \frac{K_{\perp, n}}{K_{\perp, 0}} \Bigg) = \frac{t}{\Delta t} \Big(\Delta t^2 \omega^2_c \Big),]  and thus  [K_{\perp, n} \approx K_{\perp, 0}\exp^{t \Delta t \omega^2_c}. \label{eq:euler_ke} \tag{8}]  From $\text{Eq.}~\eqref{eq:euler_ke}$, we can draw the conclusion that as time goes on, the kinetic energy calculated from Euler method solutions will increase exponentially. Likewise, for small timesteps, the kinetic energy will increase linearly. This tells us that while the Euler method may provide decent solutions for small values of $\Delta t$ and short time periods, the kinetic energy will greatly increase as larger values of $\Delta t$ are chosen and/or for large time periods, which will result in an increasing inaccuracy in the Forward Euler method solutions.  Runge-Kutta Method The Runge-Kutta Method is one of the most well-known algorithms used to solve ordinary differential equation. The most common version of the Runge-Kutta method is the fourth-order Runge-Kutta (a.k.a. RK4). For comparisons, the Forward Euler Method is a first-order Runge-Kutta method. I’ll only list the method here.  The implementation of the RK4 is as follows:  For $y^\prime = f(y)$,  [y_{n+1} = y_n + \frac{\Delta t}{6} (k_1 + 2 k_2 + 2 k_3 + k_4), \label{eq:rk4_eq} \tag{9}]  where  [\begin{align} k_1 ={}&amp; f(y_n),  k_2 ={}&amp; f\Big(y_n + \frac{\Delta t}{2}k_1\Big),  k_3 ={}&amp; f\Big(y_n + \frac{\Delta t}{2}k_2\Big),  k_4 ={}&amp; f(y_n + \Delta t k_3). \end{align}]  Just like with the Forward Euler method, we can show how the energy behaves when utilizing this integrator. We write $\text{Eq.}~\eqref{eq:em_force_vel}$ as  [A\vvec = \frac{q}{m} \vvec \times \B, \label{eq:lorentz_force_operator} \tag{10}]  where $A$ is a linear operator, thus  [\deriv{\vvec}{t} = A\vvec.]  Here, $A^T = -A$ due to the property of the cross product. Let’s write out the RK4. Since we assume $\E = 0$ and $\B$ is constant, the different $k$ values take the following form:  [\begin{aligned} k_1 ={}&amp; A\vvec_n,  k_2 ={}&amp; A\vvec_n + A^2 \frac{\Delta t}{2} \vvec_n,  k_3 ={}&amp; A\vvec_n + A^2 \frac{\Delta t}{2} \vvec_n + A^3 \frac{\Delta t^2}{4} \vvec_n,  k_4 ={}&amp; A\vvec_n + A^2 \frac{\Delta t}{2} \vvec_n + A^3 \frac{\Delta t^2}{4} \vvec_n + A^4 \frac{\Delta t^3}{4} \vvec_n. \end{aligned}]  Plugging these into $\text{Eq.}~\eqref{eq:rk4_eq}$ and simplifying, we obtain  [\vvec_{n+1} = \Big(\mathbf{I} + \Delta t A + \frac{\Delta t^2}{2!}A^2 + \frac{\Delta t^3}{3!}A^3 + \frac{\Delta t^4}{4!}A^4 \Big) \vvec_n. \label{eq:rk4_vel_expansion} \tag{11}]  For simplicity, we can write $\text{Eq.}~\eqref{eq:rk4_vel_expansion}$ as  [\vvec_{n+1} = \Lambda \vvec_n, \label{eq:rk4_vel_expansion_operator} \tag{12}]  where $\Lambda$ is a linear operator. We now take $\text{Eq.}~\eqref{eq:kinetic_energy_diff}$ and substitute $\text{Eq.}~\eqref{eq:rk4_vel_expansion_operator}$, which yields  [K_{n+1} - K_n = \frac{1}{2}m \vvec^T_n \big(\Lambda^T\Lambda - \mathbf{I} \big)\vvec_n.]  We can work out the distribution of $\Lambda^T\Lambda$ by using the fact that $A^T = -A$. This works out to be  [\Lambda^T\Lambda - \mathbf{I} = \frac{\Delta t^6}{72}A^6 + \frac{\Delta t^8}{576}A^8,]  which then gives  [K_{n+1} - K_n = \frac{1}{2}m \vvec^T_n \Big(\frac{\Delta t^6}{72}A^6 + \frac{\Delta t^8}{576}A^8 \Big)\vvec_n. \label{eq:kinetic_energy_diff_rk4} \tag{13}]  Now, we must work out what the different powers of $A$ are. Going back to $\text{Eq.}~\eqref{eq:lorentz_force_operator}$, we multiply both sides by $A$,  [\begin{split} A(A\vvec) ={}&amp; \frac{q}{m} (A\vvec) \times \B = \frac{q}{m} \Big[\frac{q}{m}\vvec \times \B \Big] \times \B,  ={}&amp; \frac{q^2}{m^2} \Big[\B(\vvec \cdot \B) - \vvec (\B \cdot \B) \Big]. \end{split}]  We multiply both sides by $A$ once more,  [\begin{split} A(A^2\vvec) ={}&amp; \frac{q^3}{m^3} \Big[\B(\vvec \cdot \B) - \vvec (\B \cdot \B) \Big] \times \B,  ={}&amp; \frac{q^3}{m^3} \Big[(\vvec \cdot \B) (\B \times \B) - (\B \cdot \B) (\vvec \times \B) \Big],  ={}&amp; -\frac{q^3}{m^3} B^2 (\vvec \times \B),  ={}&amp; -\frac{q^2 B^2}{m^2} \Big[\frac{q}{m} (\vvec \times \B)\Big]. \end{split}]  Substituting in for the cyclotron frequency and recognizing that we’re obtained $\text{Eq.}~\eqref{eq:lorentz_force_operator}$ once again, we can write  [A^3\vvec = -\omega^2_c A\vvec.]  This relationship implies that  [A^8\vvec = -\omega^2_c A^6\vvec]  since we can multiply both sides by $A^5$. $\text{Eq.}~\eqref{eq:kinetic_energy_diff_rk4}$ then becomes  [K_{n+1} - K_n = \frac{m \Delta t^6}{144} \Big(1 - \frac{\omega^2_c\Delta t^2}{8}\Big)\vvec^T_n A^6 \vvec_n. \label{eq:kinetic_energy_diff_rk4_with_A} \tag{14}]  The combination of $\vvec$ and $A$ can be written as  [\vvec^T_n A^6 \vvec_n = -(A^3 \vvec_n)^T(A^3 \vvec_n) = -\lVert A^3 \vvec_n \rVert^2 = \omega^4_c \Big\lVert \frac{q}{m} (\vvec_n \times \B) \Big\rVert^2,]  thus,  [K_{n+1} - K_n = -\frac{m \omega^4_c \Delta t^6}{144} \Big(1 - \frac{\omega^2_c\Delta t^2}{8}\Big) \Big\lVert \frac{q}{m} (\vvec_n \times \B) \Big\rVert^2.]  We can now separate out the velocity in terms of parallel and perpendicular components. Since the parallel component crossed with the magnetic field is zero, we are left with  [K_{n+1} - K_n = -\frac{m \omega^6c \Delta t^6}{144} \Big(1 - \frac{\omega^2_c\Delta t^2}{8}\Big) \lVert \vvec{\perp, n} \rVert^2. \label{eq:rkfour_ke} \tag{15}]  From $\text{Eq.}~\eqref{eq:rkfour_ke}$, we can consider multiple cases:     Case 1: $\frac{\omega^2_c\Delta t^2}{8} = 1$,   Case 2: $\frac{\omega^2_c\Delta t^2}{8} &gt; 1$,   Case 3: $\frac{\omega^2_c\Delta t^2}{8} &lt; 1$.   For case 1, $\text{Eq.}~\eqref{eq:rkfour_ke}$ becomes $K_{n+1} = K_n$ and we obtain conservation of energy. Note that while the kinetic energy is conserved, this does not mean that the trajectory is correct since the direction of the velocity is not accounted for in $\text{Eq.}~\eqref{eq:rkfour_ke}$. Another way for the system to conserve energy would be if $\vvec_{\perp, n} = 0$. This would mean that the particle only has parallel velocity, which corresponds to a constant planar velocity (hence conservation of energy) as discussed in the blog post last week.  For case 2, we would get an increasing kinetic energy as time passes. As with the Forward Euler method, this is not a physical property, but a numerical property brought on by the intergrator we chose. The RK4 solution is unstable due to either a large cyclotron frequency or a large timestep, which introduces a small error in the form of a numerical increase in the perpendicular velocity at every timestep. For both scenarios, the timestep has to be adjusted to correctly account for the motion caused by the magnetic field, thus moving the system towards case 1 or 3. If the timestep is too large, then the gyration will not be properly accounted for, causing the RK4 to provide an inadequate solution.  For case 3, we obtain a decreasing kinetic energy as time moves forward. This implies that the integrator is not reproducing the exactly circular trajectory, but instead introduces a small error in the form of a numerical reduction in the perpendicular velocity at every timestep. As before, this is not a physical property, but a numerical property brought on by the intergrator we chose. Note that for relatively short time periods this is not an issue and the RK4 provides a very good solution. A decreasing perpendicular velocity will only be apparent in the RK4 solutions if we take thousands of iterations.  Results We will be solving the Lorentz force equation for a charged particle in a specific electromagnetic field configuration. The initial conditions are:     $\xvec_0 = \langle 0, 0, 0 \rangle$ [m],   $\vvec_0 = \langle 1, 0, 0 \rangle$ [m/s],   $\E = \langle 0, 0, 0 \rangle$ [N/C],   $\B = \langle 0, 0, 1 \rangle$ [T].   We assume normalized units, i.e., $q = 1$ and $m = 1$. The timesteps we will use are $\Delta t = [0.1, 0.05, 0.01, 0.005]$ and the simulation will run over $4$ cycles.  In Fig. 1 we show the exact and numerical solutions to the Lorentz force and the gyro-motion for timestep $dt = 0.01$ using the Forward Euler method integrator. The top row shows the position, the middle row the velocity, and the bottom row the absolute error between the exact solution and the numerical solution from the Euler method. In Fig. 2, we show the same quantities, but for timestep $dt = 0.1$.     Figure 1: Euler method solutions with errors with timestep $dt = 0.01$.     Figure 2: Euler method solutions with errors with timestep $dt = 0.1$.  As discussed in Computational Methods, the Forward Euler method begins to lose accuracy as time goes on. This is evident from the plots on the left that show the position and velocity versus time. Initially, the position starts off well-approximated, but as more cycles are completed, the numerical velocity and position solutions begin to overshoot the exact solution. This is also evident by the plots on the right that show $y$ vs. $x$ and $v_y$ vs. $v_x$. The particle begins to spiral out of the expected circular trajectory. As the timestep increases, the inaccuracies greatly increase and the particle completely leave the exact trajectory. If we look at the bottom row of plots, the signed residual oscillates and the amplitudes of the oscillations slowly start growing as the particle travels more cycles.     Figure 3: Kinetic energy calculated using the Euler method solutions for two different timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$.  In Fig. 3, we show the absolute, relative, and residual error of the kinetic energy calculated using the Forward Euler method integrator for both timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$. The residual error is signed, as opposed to the absolute and relative errors. As discussed in Computational Methods, the kinetic energy increases as times goes on. For the smaller timestep (top plots), the kinetic energy appears linear. For the larger timestep (bottom plots), the kinetic energy now takes an increasing exponential form. This is exactly what we derived from the Forward Euler method integrator. The absolute and relative errors show the same conclusion.     Figure 4: RK4 method solutions with errors with timestep $dt = 0.01$.     Figure 5: RK4 method solutions with errors with timestep $dt = 0.1$.  In Fig. 4, we show the exact and numerical solutions to the Lorentz force and the gyro-motion for timestep $dt = 0.01$ using the RK4 integrator. The top row shows the position, the middle row the velocity, and the bottom row the absolute error between the exact solution and the numerical solution from the RK4 method. In Fig. 5, we show the same quantities, but for timestep $dt = 0.1$.  As discussed in Computational Methods, the RK4 method provides stable solutions for our system throughout the time period we chose. The absolute errors are on order of $10^{-9}$ for timestep $dt = 0.01$. For the timestep $dt=0.1$, the absolute errors do fall to $10^{-5}$. Although the solutions are still fairly accurate, this decrease in accuracy is exactly what we predicted in Computational Methods as the timestep increases.     Figure 6: Kinetic energy calculated using the RK4 method solutions for two different timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$.  In Fig. 6, we show the absolute, relative, and residual error of the kinetic energy calculated using the RK4 method integrator for both timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$. As previously mentioned, the residual error is signed, as opposed to the absolute and relative errors. From the plots, we see that the kinetic energy does indeed decrease with consecutive time steps. As we predicted, the accuracy decreases as we increase the timestep. The error for the timestep $dt = 0.01$ is on the order of $10^{-12}$, while the error for the timestep $dt = 0.1$ is on the order of $10^{-7}$. This shows that the RK4 provides much more accurate solutions compared to the Forward Euler method.    Figure 7: Integrator convergence.  In Fig. 7, we show the convergence of the different integrators. For comparison purposes, we also included an additional integrator known as the Heun method. This is a second-order method that improves upon the Euler method and can be derived from the general RK4 method. The figure plots the natural logarithm of the maximum positional error versus the natural logarithm of the timestep size to determine the specified numerical method’s order of convergence. We have also drawn a best-fit line.  In general, the slope of the best-fit line in log-log space should be $\sim 1$ for a first-order method, $\sim 2$ for a second-order method, and $\sim 4$ for a fourth-order method. From the figure, we see that the best-fit lines for the Heun and RK4 methods do in fact have the appropriate slopes, which we denote as $p$. On the other hand, the slope of the best-fit line for Euler’s method is not quite $1$, but this is due to the inaccuracies introduced due to the timestep size and the number of cycles as we discussed in Computational Methods and as the error plots have shown. Overall, these results confirm that our integrators work as expected.  Summary We have introduced two different integrators for solving differential equations and explored some of their properties. We developed a simulation of a charged particle in a specific electromagnetic field configuration and solved the Lorentz force over different timesteps and analyzed the results. Finally, we plotted the convergence of the different integrators to verify that they were working correctly.  Overall, we verified that our simulation accurately reproduced the physical behavior predicted by our theoretical derivations. We also confirmed that the integrators exhibited the expected properties. These results provide a solid foundation for applying these numerical methods to more complex physical systems in future simulations.  The code presented in this post can be found on my Github under the charged-particle-dynamics repo [1]. A PDF version of these this and last week’s post can be found in Ch. 1 of my computational plasma physics notes. Feel free to reach out if you have any questions about what we covered this week. Stay tuned for the next topic!  [1] Alberto J. Garcia, The Dynamics of a Charged Particle in an Electromagnetic Field, 2026. Available at: https://github.com/AJG91/charged-particle-dynamics. ⬅ Back to Home">
+
+
+
+
+
+
+
+  <meta property="article:published_time" content="2026-11-15T00:00:00-08:00">
+
+
+
+
+
+
+<link rel="canonical" href="https://ajg91.github.io//posts/computational-physics/plasma-physics/charged_particle_dynamics_numercal_results/">
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- end _includes/seo.html -->
+
+
+
+  <link href="/feed.xml" type="application/atom+xml" rel="alternate" title="AJG's Homepage Feed">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script>
+  document.documentElement.className = document.documentElement.className.replace(/\bno-js\b/g, '') + ' js ';
+  
+</script>
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="/assets/css/main.css">
+<link rel="preload" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css"></noscript>
+
+
+
+    <script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'none'
+  }
+};
+</script>
+
+<!-- 2. Load custom LaTeX macros -->
+<script src="/assets/js/mathjax-macros.js"></script>
+
+<!-- 3. Load MathJax once -->
+<script
+  id="MathJax-script"
+  defer
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+</script>
+  </head>
+
+  <body class="layout--post_with_date" dir="ltr">
+    <nav class="skip-links">
+  <ul>
+    <li><a href="#site-nav" class="screen-reader-shortcut">Skip to primary navigation</a></li>
+    <li><a href="#main" class="screen-reader-shortcut">Skip to content</a></li>
+    <li><a href="#footer" class="screen-reader-shortcut">Skip to footer</a></li>
+  </ul>
+</nav>
+
+    
+
+<div class="masthead">
+  <div class="masthead__inner-wrap">
+    <div class="masthead__menu">
+      <nav id="site-nav" class="greedy-nav">
+        
+        <a class="site-title" href="/">
+          AJG&#39;s Homepage
+          
+        </a>
+        <ul class="visible-links"><li class="masthead__menu-item">
+              <a
+                href="/posts/"
+                
+                
+              >Posts</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/notes/"
+                
+                
+              >Notes</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/publications/"
+                
+                
+              >Publications</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/talks/"
+                
+                
+              >Talks</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/software/"
+                
+                
+              >Software</a>
+            </li><li class="masthead__menu-item">
+              <a
+                href="/contact/"
+                
+                
+              >Contact Me</a>
+            </li></ul>
+        
+        <button class="greedy-nav__toggle hidden" type="button">
+          <span class="visually-hidden">Toggle menu</span>
+          <div class="navicon"></div>
+        </button>
+        <ul class="hidden-links hidden"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+
+    <div class="initial-content">
+      
+
+
+
+
+  
+    
+
+
+
+<nav class="breadcrumbs">
+  <ol itemscope itemtype="https://schema.org/BreadcrumbList">
+    
+    
+    
+      
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/" itemprop="item"><span itemprop="name">Home</span></a>
+
+          <meta itemprop="position" content="1" />
+        </li>
+        <span class="sep">/</span>
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/posts" itemprop="item"><span itemprop="name">Posts</span></a>
+          <meta itemprop="position" content="2" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/computational-physics" itemprop="item"><span itemprop="name">Computational physics</span></a>
+          <meta itemprop="position" content="3" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        
+        <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <a href="/plasma-physics" itemprop="item"><span itemprop="name">Plasma physics</span></a>
+          <meta itemprop="position" content="4" />
+        </li>
+        <span class="sep">/</span>
+      
+    
+      
+      
+        <li class="current">Charged Particle Dynamics: Numerical Results</li>
+      
+    
+  </ol>
+</nav>
+
+  
+
+
+<div id="main" role="main">
+  
+
+
+  <article class="page" itemscope itemtype="https://schema.org/CreativeWork">
+    <meta itemprop="headline" content="Charged Particle Dynamics: Numerical Results">
+    <meta itemprop="description" content="This week I will introduce two numerical integrators, discuss some of their properties, develop a simulation of a particle in a specific electromagnetic field configuration, and analyze the results. We will be using the integrators to solve the equations introduced in the previous post.Computational MethodsIn order to solve the Lorentz force equation numerically, we must implement an integrator. First, let’s rewrite the Lorentz force,[\deriv{v_i}{t} = \frac{q}{m} (E_i + \levi{i}{j}{k} v_j B_k).\label{eq:em_force_vel}\tag{1}]Now, I will go over a few numerical integrator options:Forward Euler MethodThis is a first-order method and is considered to be the most basic method for numerical integration of differential equations. Since it is first-order, the truncation error is second-order. We can derive the method by applying a Taylor expansion of $y(t)$ about $t_n$[y(t_n + \delta t) \approx y(t_n) + \delta t y^\prime (t_n) + \mathcal{O}(\delta t^2).]Defining $y_{n+1} = y(t_n + \delta t)$ and substituting in the general form of a first-order differential equation, $y^\prime(t_n) = f(t_n, y_n)$ yields[y_{n+1} \approx y(t_n) + \delta t f(t_n, y_n).]This approximation has a first-order global error since it’s linear, which is why it’s known as a first-order method.Let’s understand how the energy behaves with this integrator. Referring back at $\text{Eq.}~\eqref{eq:em_force_vel}$ and assuming $\E = 0$ and $\B$ is constant, we can write[\vvec_{n+1} = \vvec_n + \frac{q \Delta t}{m} (\vvec_n \times \B).\label{eq:vel_forward_step_general}\tag{2}]The change in kinetic energy between timesteps can also be written as[K_{n+1} - K_n = \frac{1}{2}m \Big(\lVert \vvec_{n+1} \rVert^2 - \lVert \vvec_{n} \rVert^2\Big).\label{eq:kinetic_energy_diff}\tag{3}]Then, the $\vvec_{n+1}$ term becomes[\lVert \vvec_{n+1} \rVert^2 = \lVert \vvec_{n} \rVert^2 + \Big(\frac{q \Delta t}{m}\Big)^2 \lVert \vvec_{n} \times \B \rVert^2,\label{eq:vel_forward_step}\tag{4}]where the cross term cancels out since the dot product is zero. Now, $\text{Eq.}~\eqref{eq:kinetic_energy_diff}$ becomes[K_{n+1} - K_n = \frac{1}{2} \frac{q^2 \Delta t^2}{m} \lVert \vvec_{n} \times \B \rVert^2 \ge 0.\label{eq:diff_kinetic_energy}\tag{5}]From $\text{Eq.}~\eqref{eq:diff_kinetic_energy}$, we conclude that the kinetic energy will always increase with each consecutive time step. This is not a physical property, but a numerical property brought on by the intergrator we chose. We can also determine the overall shape of the kinetic energy over time. To do this, we split the velocity into the parallel and perpendicular components and plug them into the kinetic energy[K_n = \frac{1}{2}m \Big(\lVert \vvec_{\parallel, n} \rVert^2 + \lVert \vvec_{\perp, n} \rVert^2\Big),\label{eq:kinetic_energy_para_perp_vel}\tag{6}]where the cross terms cancel since $\vvec_{\parallel, n} \cdot \vvec_{\perp, n} = 0$. We can now focus on the $\vvec_{\perp, n}$ terms since the parallel terms conserve energy throughout the trajectory. Thus,[K_{\perp, n} = \frac{1}{2}m \lVert \vvec_{\perp, n} \rVert^2,\label{eq:kinetic_energy_perp_vel}\tag{7}]We can also write $\text{Eq.}~\eqref{eq:vel_forward_step}$ in terms of the components,[\lVert \vvec_{\parallel, n+1} + \vvec_{\perp, n+1} \rVert^2 = \big(\vvec_{\parallel, n} + \vvec_{\perp, n}\big) + \Big(\frac{q \Delta t}{m}\Big)^2 \lVert \big(\vvec_{\parallel, n} + \vvec_{\perp, n}\big) \times \B \rVert^2.]Cancelling out the dot product between velocities and cross product between $\vvec_{\parallel, n}$ and $\B$, and substituting for the cyclotron frequency, we obtain[\begin{aligned}\lVert \vvec_{\parallel, n+1} \rVert^2 ={}&amp; \lVert \vvec_{\parallel, n} \rVert^2, \lVert \vvec_{\perp, n+1} \rVert^2 ={}&amp; \Big(1 + \Delta t^2 \omega^2c \Big) \lVert \vvec{\perp, n} \rVert^2.\end{aligned}]As with $\text{Eq.}~\eqref{eq:diff_kinetic_energy}$, these equations also show that the kinetic energy has to increase. Focusing on the perpendicular term, by taking consequtive timesteps, we can show that the following relationship holds:[\lVert \vvec_{\perp, n+1} \rVert^2 = \Big(1 + \Delta t^2 \omega^2c \Big)^{t / \Delta t+1} \lVert \vvec{\perp, 0} \rVert^2.]With this equation and the kinetic energy equation, we can write[K_{\perp, n} = \Big(1 + \Delta t^2 \omega^2c \Big)^{t / \Delta t} K{\perp, 0},]where we have shifted $n$ by one without loss of generality. Taking the natural log of both sides yields[\ln\Bigg( \frac{K_{\perp, n}}{K_{\perp, 0}} \Bigg) = \frac{t}{\Delta t} \ln \Big(1 + \Delta t^2 \omega^2_c \Big).]If $\Delta t^2 \omega^2_c \ll 1$, we can expand the natural log,[\ln\Bigg( \frac{K_{\perp, n}}{K_{\perp, 0}} \Bigg) = \frac{t}{\Delta t} \Big(\Delta t^2 \omega^2_c \Big),]and thus[K_{\perp, n} \approx K_{\perp, 0}\exp^{t \Delta t \omega^2_c}.\label{eq:euler_ke}\tag{8}]From $\text{Eq.}~\eqref{eq:euler_ke}$, we can draw the conclusion that as time goes on, the kinetic energy calculated from Euler method solutions will increase exponentially. Likewise, for small timesteps, the kinetic energy will increase linearly. This tells us that while the Euler method may provide decent solutions for small values of $\Delta t$ and short time periods, the kinetic energy will greatly increase as larger values of $\Delta t$ are chosen and/or for large time periods, which will result in an increasing inaccuracy in the Forward Euler method solutions.Runge-Kutta MethodThe Runge-Kutta Method is one of the most well-known algorithms used to solve ordinary differential equation. The most common version of the Runge-Kutta method is the fourth-order Runge-Kutta (a.k.a. RK4). For comparisons, the Forward Euler Method is a first-order Runge-Kutta method. I’ll only list the method here.The implementation of the RK4 is as follows:For $y^\prime = f(y)$,[y_{n+1} = y_n + \frac{\Delta t}{6} (k_1 + 2 k_2 + 2 k_3 + k_4),\label{eq:rk4_eq}\tag{9}]where[\begin{align}k_1 ={}&amp; f(y_n), k_2 ={}&amp; f\Big(y_n + \frac{\Delta t}{2}k_1\Big), k_3 ={}&amp; f\Big(y_n + \frac{\Delta t}{2}k_2\Big), k_4 ={}&amp; f(y_n + \Delta t k_3).\end{align}]Just like with the Forward Euler method, we can show how the energy behaves when utilizing this integrator. We write $\text{Eq.}~\eqref{eq:em_force_vel}$ as[A\vvec = \frac{q}{m} \vvec \times \B,\label{eq:lorentz_force_operator}\tag{10}]where $A$ is a linear operator, thus[\deriv{\vvec}{t} = A\vvec.]Here, $A^T = -A$ due to the property of the cross product. Let’s write out the RK4. Since we assume $\E = 0$ and $\B$ is constant, the different $k$ values take the following form:[\begin{aligned}k_1 ={}&amp; A\vvec_n, k_2 ={}&amp; A\vvec_n + A^2 \frac{\Delta t}{2} \vvec_n, k_3 ={}&amp; A\vvec_n + A^2 \frac{\Delta t}{2} \vvec_n + A^3 \frac{\Delta t^2}{4} \vvec_n, k_4 ={}&amp; A\vvec_n + A^2 \frac{\Delta t}{2} \vvec_n + A^3 \frac{\Delta t^2}{4} \vvec_n + A^4 \frac{\Delta t^3}{4} \vvec_n.\end{aligned}]Plugging these into $\text{Eq.}~\eqref{eq:rk4_eq}$ and simplifying, we obtain[\vvec_{n+1} = \Big(\mathbf{I} + \Delta t A + \frac{\Delta t^2}{2!}A^2 + \frac{\Delta t^3}{3!}A^3 + \frac{\Delta t^4}{4!}A^4 \Big) \vvec_n.\label{eq:rk4_vel_expansion}\tag{11}]For simplicity, we can write $\text{Eq.}~\eqref{eq:rk4_vel_expansion}$ as[\vvec_{n+1} = \Lambda \vvec_n,\label{eq:rk4_vel_expansion_operator}\tag{12}]where $\Lambda$ is a linear operator. We now take $\text{Eq.}~\eqref{eq:kinetic_energy_diff}$ and substitute $\text{Eq.}~\eqref{eq:rk4_vel_expansion_operator}$, which yields[K_{n+1} - K_n = \frac{1}{2}m \vvec^T_n \big(\Lambda^T\Lambda - \mathbf{I} \big)\vvec_n.]We can work out the distribution of $\Lambda^T\Lambda$ by using the fact that $A^T = -A$. This works out to be[\Lambda^T\Lambda - \mathbf{I} = \frac{\Delta t^6}{72}A^6 + \frac{\Delta t^8}{576}A^8,]which then gives[K_{n+1} - K_n = \frac{1}{2}m \vvec^T_n \Big(\frac{\Delta t^6}{72}A^6 + \frac{\Delta t^8}{576}A^8 \Big)\vvec_n.\label{eq:kinetic_energy_diff_rk4}\tag{13}]Now, we must work out what the different powers of $A$ are. Going back to $\text{Eq.}~\eqref{eq:lorentz_force_operator}$, we multiply both sides by $A$,[\begin{split}A(A\vvec) ={}&amp; \frac{q}{m} (A\vvec) \times \B = \frac{q}{m} \Big[\frac{q}{m}\vvec \times \B \Big] \times \B, ={}&amp; \frac{q^2}{m^2} \Big[\B(\vvec \cdot \B) - \vvec (\B \cdot \B) \Big].\end{split}]We multiply both sides by $A$ once more,[\begin{split}A(A^2\vvec) ={}&amp; \frac{q^3}{m^3} \Big[\B(\vvec \cdot \B) - \vvec (\B \cdot \B) \Big] \times \B, ={}&amp; \frac{q^3}{m^3} \Big[(\vvec \cdot \B) (\B \times \B) - (\B \cdot \B) (\vvec \times \B) \Big], ={}&amp; -\frac{q^3}{m^3} B^2 (\vvec \times \B), ={}&amp; -\frac{q^2 B^2}{m^2} \Big[\frac{q}{m} (\vvec \times \B)\Big].\end{split}]Substituting in for the cyclotron frequency and recognizing that we’re obtained $\text{Eq.}~\eqref{eq:lorentz_force_operator}$ once again, we can write[A^3\vvec = -\omega^2_c A\vvec.]This relationship implies that[A^8\vvec = -\omega^2_c A^6\vvec]since we can multiply both sides by $A^5$. $\text{Eq.}~\eqref{eq:kinetic_energy_diff_rk4}$ then becomes[K_{n+1} - K_n = \frac{m \Delta t^6}{144} \Big(1 - \frac{\omega^2_c\Delta t^2}{8}\Big)\vvec^T_n A^6 \vvec_n.\label{eq:kinetic_energy_diff_rk4_with_A}\tag{14}]The combination of $\vvec$ and $A$ can be written as[\vvec^T_n A^6 \vvec_n = -(A^3 \vvec_n)^T(A^3 \vvec_n) = -\lVert A^3 \vvec_n \rVert^2 = \omega^4_c \Big\lVert \frac{q}{m} (\vvec_n \times \B) \Big\rVert^2,]thus,[K_{n+1} - K_n = -\frac{m \omega^4_c \Delta t^6}{144} \Big(1 - \frac{\omega^2_c\Delta t^2}{8}\Big) \Big\lVert \frac{q}{m} (\vvec_n \times \B) \Big\rVert^2.]We can now separate out the velocity in terms of parallel and perpendicular components. Since the parallel component crossed with the magnetic field is zero, we are left with[K_{n+1} - K_n = -\frac{m \omega^6c \Delta t^6}{144} \Big(1 - \frac{\omega^2_c\Delta t^2}{8}\Big) \lVert \vvec{\perp, n} \rVert^2.\label{eq:rkfour_ke}\tag{15}]From $\text{Eq.}~\eqref{eq:rkfour_ke}$, we can consider multiple cases:  Case 1: $\frac{\omega^2_c\Delta t^2}{8} = 1$,  Case 2: $\frac{\omega^2_c\Delta t^2}{8} &gt; 1$,  Case 3: $\frac{\omega^2_c\Delta t^2}{8} &lt; 1$.For case 1, $\text{Eq.}~\eqref{eq:rkfour_ke}$ becomes $K_{n+1} = K_n$ and we obtain conservation of energy. Note that while the kinetic energy is conserved, this does not mean that the trajectory is correct since the direction of the velocity is not accounted for in $\text{Eq.}~\eqref{eq:rkfour_ke}$. Another way for the system to conserve energy would be if $\vvec_{\perp, n} = 0$. This would mean that the particle only has parallel velocity, which corresponds to a constant planar velocity (hence conservation of energy) as discussed in the blog post last week.For case 2, we would get an increasing kinetic energy as time passes. As with the Forward Euler method, this is not a physical property, but a numerical property brought on by the intergrator we chose. The RK4 solution is unstable due to either a large cyclotron frequency or a large timestep, which introduces a small error in the form of a numerical increase in the perpendicular velocity at every timestep. For both scenarios, the timestep has to be adjusted to correctly account for the motion caused by the magnetic field, thus moving the system towards case 1 or 3. If the timestep is too large, then the gyration will not be properly accounted for, causing the RK4 to provide an inadequate solution.For case 3, we obtain a decreasing kinetic energy as time moves forward. This implies that the integrator is not reproducing the exactly circular trajectory, but instead introduces a small error in the form of a numerical reduction in the perpendicular velocity at every timestep. As before, this is not a physical property, but a numerical property brought on by the intergrator we chose. Note that for relatively short time periods this is not an issue and the RK4 provides a very good solution. A decreasing perpendicular velocity will only be apparent in the RK4 solutions if we take thousands of iterations.ResultsWe will be solving the Lorentz force equation for a charged particle in a specific electromagnetic field configuration. The initial conditions are:  $\xvec_0 = \langle 0, 0, 0 \rangle$ [m],  $\vvec_0 = \langle 1, 0, 0 \rangle$ [m/s],  $\E = \langle 0, 0, 0 \rangle$ [N/C],  $\B = \langle 0, 0, 1 \rangle$ [T].We assume normalized units, i.e., $q = 1$ and $m = 1$. The timesteps we will use are $\Delta t = [0.1, 0.05, 0.01, 0.005]$ and the simulation will run over $4$ cycles.In Fig. 1 we show the exact and numerical solutions to the Lorentz force and the gyro-motion for timestep $dt = 0.01$ using the Forward Euler method integrator. The top row shows the position, the middle row the velocity, and the bottom row the absolute error between the exact solution and the numerical solution from the Euler method. In Fig. 2, we show the same quantities, but for timestep $dt = 0.1$.Figure 1: Euler method solutions with errors with timestep $dt = 0.01$.Figure 2: Euler method solutions with errors with timestep $dt = 0.1$.As discussed in Computational Methods, the Forward Euler method begins to lose accuracy as time goes on. This is evident from the plots on the left that show the position and velocity versus time. Initially, the position starts off well-approximated, but as more cycles are completed, the numerical velocity and position solutions begin to overshoot the exact solution. This is also evident by the plots on the right that show $y$ vs. $x$ and $v_y$ vs. $v_x$. The particle begins to spiral out of the expected circular trajectory. As the timestep increases, the inaccuracies greatly increase and the particle completely leave the exact trajectory. If we look at the bottom row of plots, the signed residual oscillates and the amplitudes of the oscillations slowly start growing as the particle travels more cycles.Figure 3: Kinetic energy calculated using the Euler method solutions for two different timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$.In Fig. 3, we show the absolute, relative, and residual error of the kinetic energy calculated using the Forward Euler method integrator for both timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$. The residual error is signed, as opposed to the absolute and relative errors. As discussed in Computational Methods, the kinetic energy increases as times goes on. For the smaller timestep (top plots), the kinetic energy appears linear. For the larger timestep (bottom plots), the kinetic energy now takes an increasing exponential form. This is exactly what we derived from the Forward Euler method integrator. The absolute and relative errors show the same conclusion.Figure 4: RK4 method solutions with errors with timestep $dt = 0.01$.Figure 5: RK4 method solutions with errors with timestep $dt = 0.1$.In Fig. 4, we show the exact and numerical solutions to the Lorentz force and the gyro-motion for timestep $dt = 0.01$ using the RK4 integrator. The top row shows the position, the middle row the velocity, and the bottom row the absolute error between the exact solution and the numerical solution from the RK4 method. In Fig. 5, we show the same quantities, but for timestep $dt = 0.1$.As discussed in Computational Methods, the RK4 method provides stable solutions for our system throughout the time period we chose. The absolute errors are on order of $10^{-9}$ for timestep $dt = 0.01$. For the timestep $dt=0.1$, the absolute errors do fall to $10^{-5}$. Although the solutions are still fairly accurate, this decrease in accuracy is exactly what we predicted in Computational Methods as the timestep increases.Figure 6: Kinetic energy calculated using the RK4 method solutions for two different timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$.In Fig. 6, we show the absolute, relative, and residual error of the kinetic energy calculated using the RK4 method integrator for both timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$. As previously mentioned, the residual error is signed, as opposed to the absolute and relative errors. From the plots, we see that the kinetic energy does indeed decrease with consecutive time steps. As we predicted, the accuracy decreases as we increase the timestep. The error for the timestep $dt = 0.01$ is on the order of $10^{-12}$, while the error for the timestep $dt = 0.1$ is on the order of $10^{-7}$. This shows that the RK4 provides much more accurate solutions compared to the Forward Euler method.Figure 7: Integrator convergence.In Fig. 7, we show the convergence of the different integrators. For comparison purposes, we also included an additional integrator known as the Heun method. This is a second-order method that improves upon the Euler method and can be derived from the general RK4 method. The figure plots the natural logarithm of the maximum positional error versus the natural logarithm of the timestep size to determine the specified numerical method’s order of convergence. We have also drawn a best-fit line.In general, the slope of the best-fit line in log-log space should be $\sim 1$ for a first-order method, $\sim 2$ for a second-order method, and $\sim 4$ for a fourth-order method. From the figure, we see that the best-fit lines for the Heun and RK4 methods do in fact have the appropriate slopes, which we denote as $p$. On the other hand, the slope of the best-fit line for Euler’s method is not quite $1$, but this is due to the inaccuracies introduced due to the timestep size and the number of cycles as we discussed in Computational Methods and as the error plots have shown. Overall, these results confirm that our integrators work as expected.SummaryWe have introduced two different integrators for solving differential equations and explored some of their properties. We developed a simulation of a charged particle in a specific electromagnetic field configuration and solved the Lorentz force over different timesteps and analyzed the results. Finally, we plotted the convergence of the different integrators to verify that they were working correctly.Overall, we verified that our simulation accurately reproduced the physical behavior predicted by our theoretical derivations. We also confirmed that the integrators exhibited the expected properties. These results provide a solid foundation for applying these numerical methods to more complex physical systems in future simulations.The code presented in this post can be found on my Github under the charged-particle-dynamics repo [1]. A PDF version of these this and last week’s post can be found in Ch. 1 of my computational plasma physics notes. Feel free to reach out if you have any questions about what we covered this week. Stay tuned for the next topic![1] Alberto J. Garcia, The Dynamics of a Charged Particle in an Electromagnetic Field, 2026. Available at: https://github.com/AJG91/charged-particle-dynamics.⬅ Back to Home">
+    <meta itemprop="datePublished" content="2026-11-15T00:00:00-08:00">
+    
+
+    <div class="page__inner-wrap">
+      
+        <header>
+          <h1 id="page-title" class="page__title" itemprop="headline">
+            <a href="https://ajg91.github.io//posts/computational-physics/plasma-physics/charged_particle_dynamics_numercal_results/" itemprop="url">Charged Particle Dynamics: Numerical Results
+</a>
+          </h1>
+          
+
+
+        </header>
+      
+
+      <section class="page__content" itemprop="text">
+        
+        <p class="post-date">November 15, 2026</p>
+
+
+<p>This week I will introduce two numerical integrators, discuss some of their properties, develop a simulation of a particle in a specific electromagnetic field configuration, and analyze the results. We will be using the integrators to solve the equations introduced in the previous <a href="https://ajg91.github.io/posts/computational-physics/plasma-physics/charged_particle_dynamics/" title="cpd-post">post</a>.</p>
+
+<h2 id="sec:computational_methods">Computational Methods</h2>
+<p>In order to solve the Lorentz force equation numerically, we must implement an integrator. First, let’s rewrite the Lorentz force,</p>
+
+\[\deriv{v_i}{t} = \frac{q}{m} (E_i + \levi{i}{j}{k} v_j B_k).
+\label{eq:em_force_vel}
+\tag{1}\]
+
+<p>Now, I will go over a few numerical integrator options:</p>
+
+<p><strong><u>Forward Euler Method</u></strong><br />
+This is a first-order method and is considered to be the most basic method for numerical integration of differential equations. Since it is first-order, the truncation error is second-order. We can derive the method by applying a Taylor expansion of $y(t)$ about $t_n$</p>
+
+\[y(t_n + \delta t) \approx y(t_n) + \delta t y^\prime (t_n) + \mathcal{O}(\delta t^2).\]
+
+<p>Defining $y_{n+1} = y(t_n + \delta t)$ and substituting in the general form of a first-order differential equation, $y^\prime(t_n) = f(t_n, y_n)$ yields</p>
+
+\[y_{n+1} \approx y(t_n) + \delta t f(t_n, y_n).\]
+
+<p>This approximation has a first-order global error since it’s linear, which is why it’s known as a first-order method.</p>
+
+<p>Let’s understand how the energy behaves with this integrator. Referring back at $\text{Eq.}~\eqref{eq:em_force_vel}$ and assuming $\E = 0$ and $\B$ is constant, we can write</p>
+
+\[\vvec_{n+1} = \vvec_n + \frac{q \Delta t}{m} (\vvec_n \times \B).
+\label{eq:vel_forward_step_general}
+\tag{2}\]
+
+<p>The change in kinetic energy between timesteps can also be written as</p>
+
+\[K_{n+1} - K_n = \frac{1}{2}m \Big(\lVert \vvec_{n+1} \rVert^2 - \lVert \vvec_{n} \rVert^2\Big).
+\label{eq:kinetic_energy_diff}
+\tag{3}\]
+
+<p>Then, the $\vvec_{n+1}$ term becomes</p>
+
+\[\lVert \vvec_{n+1} \rVert^2 = \lVert \vvec_{n} \rVert^2 + \Big(\frac{q \Delta t}{m}\Big)^2 \lVert \vvec_{n} \times \B \rVert^2,
+\label{eq:vel_forward_step}
+\tag{4}\]
+
+<p>where the cross term cancels out since the dot product is zero. Now, $\text{Eq.}~\eqref{eq:kinetic_energy_diff}$ becomes</p>
+
+\[K_{n+1} - K_n = \frac{1}{2} \frac{q^2 \Delta t^2}{m} \lVert \vvec_{n} \times \B \rVert^2 \ge 0.
+\label{eq:diff_kinetic_energy}
+\tag{5}\]
+
+<p>From $\text{Eq.}~\eqref{eq:diff_kinetic_energy}$, we conclude that the kinetic energy will always increase with each consecutive time step. This is not a physical property, but a numerical property brought on by the intergrator we chose. We can also determine the overall shape of the kinetic energy over time. To do this, we split the velocity into the parallel and perpendicular components and plug them into the kinetic energy</p>
+
+\[K_n = \frac{1}{2}m \Big(\lVert \vvec_{\parallel, n} \rVert^2 + \lVert \vvec_{\perp, n} \rVert^2\Big),
+\label{eq:kinetic_energy_para_perp_vel}
+\tag{6}\]
+
+<p>where the cross terms cancel since $\vvec_{\parallel, n} \cdot \vvec_{\perp, n} = 0$. We can now focus on the $\vvec_{\perp, n}$ terms since the parallel terms conserve energy throughout the trajectory. Thus,</p>
+
+\[K_{\perp, n} = \frac{1}{2}m \lVert \vvec_{\perp, n} \rVert^2,
+\label{eq:kinetic_energy_perp_vel}
+\tag{7}\]
+
+<p>We can also write $\text{Eq.}~\eqref{eq:vel_forward_step}$ in terms of the components,</p>
+
+\[\lVert \vvec_{\parallel, n+1} + \vvec_{\perp, n+1} \rVert^2 = \big(\vvec_{\parallel, n} + \vvec_{\perp, n}\big) + \Big(\frac{q \Delta t}{m}\Big)^2 \lVert \big(\vvec_{\parallel, n} + \vvec_{\perp, n}\big) \times \B \rVert^2.\]
+
+<p>Cancelling out the dot product between velocities and cross product between $\vvec_{\parallel, n}$ and $\B$, and substituting for the cyclotron frequency, we obtain</p>
+
+\[\begin{aligned}
+\lVert \vvec_{\parallel, n+1} \rVert^2 ={}&amp; \lVert \vvec_{\parallel, n} \rVert^2, \\
+\lVert \vvec_{\perp, n+1} \rVert^2 ={}&amp; \Big(1 + \Delta t^2 \omega^2_c \Big) \lVert \vvec_{\perp, n} \rVert^2.
+\end{aligned}\]
+
+<p>As with $\text{Eq.}~\eqref{eq:diff_kinetic_energy}$, these equations also show that the kinetic energy has to increase. Focusing on the perpendicular term, by taking consequtive timesteps, we can show that the following relationship holds:</p>
+
+\[\lVert \vvec_{\perp, n+1} \rVert^2 = \Big(1 + \Delta t^2 \omega^2_c \Big)^{t / \Delta t+1} \lVert \vvec_{\perp, 0} \rVert^2.\]
+
+<p>With this equation and the kinetic energy equation, we can write</p>
+
+\[K_{\perp, n} = \Big(1 + \Delta t^2 \omega^2_c \Big)^{t / \Delta t} K_{\perp, 0},\]
+
+<p>where we have shifted $n$ by one without loss of generality. Taking the natural log of both sides yields</p>
+
+\[\ln\Bigg( \frac{K_{\perp, n}}{K_{\perp, 0}} \Bigg) = \frac{t}{\Delta t} \ln \Big(1 + \Delta t^2 \omega^2_c \Big).\]
+
+<p>If $\Delta t^2 \omega^2_c \ll 1$, we can expand the natural log,</p>
+
+\[\ln\Bigg( \frac{K_{\perp, n}}{K_{\perp, 0}} \Bigg) = \frac{t}{\Delta t} \Big(\Delta t^2 \omega^2_c \Big),\]
+
+<p>and thus</p>
+
+\[K_{\perp, n} \approx K_{\perp, 0}\exp^{t \Delta t \omega^2_c}.
+\label{eq:euler_ke}
+\tag{8}\]
+
+<p>From $\text{Eq.}~\eqref{eq:euler_ke}$, we can draw the conclusion that as time goes on, the kinetic energy calculated from Euler method solutions will increase exponentially. Likewise, for small timesteps, the kinetic energy will increase linearly. This tells us that while the Euler method may provide decent solutions for small values of $\Delta t$ and short time periods, the kinetic energy will greatly increase as larger values of $\Delta t$ are chosen and/or for large time periods, which will result in an increasing inaccuracy in the Forward Euler method solutions.</p>
+
+<p><strong><u>Runge-Kutta Method</u></strong><br />
+The Runge-Kutta Method is one of the most well-known algorithms used to solve ordinary differential equation. The most common version of the Runge-Kutta method is the fourth-order Runge-Kutta (a.k.a. RK4). For comparisons, the Forward Euler Method is a first-order Runge-Kutta method. I’ll only list the method here.</p>
+
+<p>The implementation of the RK4 is as follows:</p>
+
+<p>For $y^\prime = f(y)$,</p>
+
+\[y_{n+1} = y_n + \frac{\Delta t}{6} (k_1 + 2 k_2 + 2 k_3 + k_4),
+\label{eq:rk4_eq}
+\tag{9}\]
+
+<p>where</p>
+
+\[\begin{align}
+k_1 ={}&amp; f(y_n), \\
+k_2 ={}&amp; f\Big(y_n + \frac{\Delta t}{2}k_1\Big), \\
+k_3 ={}&amp; f\Big(y_n + \frac{\Delta t}{2}k_2\Big), \\
+k_4 ={}&amp; f(y_n + \Delta t k_3).
+\end{align}\]
+
+<p>Just like with the Forward Euler method, we can show how the energy behaves when utilizing this integrator. We write $\text{Eq.}~\eqref{eq:em_force_vel}$ as</p>
+
+\[A\vvec = \frac{q}{m} \vvec \times \B,
+\label{eq:lorentz_force_operator}
+\tag{10}\]
+
+<p>where $A$ is a linear operator, thus</p>
+
+\[\deriv{\vvec}{t} = A\vvec.\]
+
+<p>Here, $A^T = -A$ due to the property of the cross product. Let’s write out the RK4. Since we assume $\E = 0$ and $\B$ is constant, the different $k$ values take the following form:</p>
+
+\[\begin{aligned}
+k_1 ={}&amp; A\vvec_n, \\
+k_2 ={}&amp; A\vvec_n + A^2 \frac{\Delta t}{2} \vvec_n, \\
+k_3 ={}&amp; A\vvec_n + A^2 \frac{\Delta t}{2} \vvec_n + A^3 \frac{\Delta t^2}{4} \vvec_n, \\
+k_4 ={}&amp; A\vvec_n + A^2 \frac{\Delta t}{2} \vvec_n + A^3 \frac{\Delta t^2}{4} \vvec_n + A^4 \frac{\Delta t^3}{4} \vvec_n.
+\end{aligned}\]
+
+<p>Plugging these into $\text{Eq.}~\eqref{eq:rk4_eq}$ and simplifying, we obtain</p>
+
+\[\vvec_{n+1} = \Big(\mathbf{I} + \Delta t A + \frac{\Delta t^2}{2!}A^2 + \frac{\Delta t^3}{3!}A^3 + \frac{\Delta t^4}{4!}A^4 \Big) \vvec_n.
+\label{eq:rk4_vel_expansion}
+\tag{11}\]
+
+<p>For simplicity, we can write $\text{Eq.}~\eqref{eq:rk4_vel_expansion}$ as</p>
+
+\[\vvec_{n+1} = \Lambda \vvec_n,
+\label{eq:rk4_vel_expansion_operator}
+\tag{12}\]
+
+<p>where $\Lambda$ is a linear operator. We now take $\text{Eq.}~\eqref{eq:kinetic_energy_diff}$ and substitute $\text{Eq.}~\eqref{eq:rk4_vel_expansion_operator}$, which yields</p>
+
+\[K_{n+1} - K_n = \frac{1}{2}m \vvec^T_n \big(\Lambda^T\Lambda - \mathbf{I} \big)\vvec_n.\]
+
+<p>We can work out the distribution of $\Lambda^T\Lambda$ by using the fact that $A^T = -A$. This works out to be</p>
+
+\[\Lambda^T\Lambda - \mathbf{I} = \frac{\Delta t^6}{72}A^6 + \frac{\Delta t^8}{576}A^8,\]
+
+<p>which then gives</p>
+
+\[K_{n+1} - K_n = \frac{1}{2}m \vvec^T_n \Big(\frac{\Delta t^6}{72}A^6 + \frac{\Delta t^8}{576}A^8 \Big)\vvec_n.
+\label{eq:kinetic_energy_diff_rk4}
+\tag{13}\]
+
+<p>Now, we must work out what the different powers of $A$ are. Going back to $\text{Eq.}~\eqref{eq:lorentz_force_operator}$, we multiply both sides by $A$,</p>
+
+\[\begin{split}
+A(A\vvec) ={}&amp; \frac{q}{m} (A\vvec) \times \B = \frac{q}{m} \Big[\frac{q}{m}\vvec \times \B \Big] \times \B, \\
+={}&amp; \frac{q^2}{m^2} \Big[\B(\vvec \cdot \B) - \vvec (\B \cdot \B) \Big].
+\end{split}\]
+
+<p>We multiply both sides by $A$ once more,</p>
+
+\[\begin{split}
+A(A^2\vvec) ={}&amp; \frac{q^3}{m^3} \Big[\B(\vvec \cdot \B) - \vvec (\B \cdot \B) \Big] \times \B, \\
+={}&amp; \frac{q^3}{m^3} \Big[(\vvec \cdot \B) (\B \times \B) - (\B \cdot \B) (\vvec \times \B) \Big], \\
+={}&amp; -\frac{q^3}{m^3} B^2 (\vvec \times \B), \\
+={}&amp; -\frac{q^2 B^2}{m^2} \Big[\frac{q}{m} (\vvec \times \B)\Big].
+\end{split}\]
+
+<p>Substituting in for the cyclotron frequency and recognizing that we’re obtained $\text{Eq.}~\eqref{eq:lorentz_force_operator}$ once again, we can write</p>
+
+\[A^3\vvec = -\omega^2_c A\vvec.\]
+
+<p>This relationship implies that</p>
+
+\[A^8\vvec = -\omega^2_c A^6\vvec\]
+
+<p>since we can multiply both sides by $A^5$. $\text{Eq.}~\eqref{eq:kinetic_energy_diff_rk4}$ then becomes</p>
+
+\[K_{n+1} - K_n = \frac{m \Delta t^6}{144} \Big(1 - \frac{\omega^2_c\Delta t^2}{8}\Big)\vvec^T_n A^6 \vvec_n.
+\label{eq:kinetic_energy_diff_rk4_with_A}
+\tag{14}\]
+
+<p>The combination of $\vvec$ and $A$ can be written as</p>
+
+\[\vvec^T_n A^6 \vvec_n = -(A^3 \vvec_n)^T(A^3 \vvec_n) = -\lVert A^3 \vvec_n \rVert^2 = \omega^4_c \Big\lVert \frac{q}{m} (\vvec_n \times \B) \Big\rVert^2,\]
+
+<p>thus,</p>
+
+\[K_{n+1} - K_n = -\frac{m \omega^4_c \Delta t^6}{144} \Big(1 - \frac{\omega^2_c\Delta t^2}{8}\Big) \Big\lVert \frac{q}{m} (\vvec_n \times \B) \Big\rVert^2.\]
+
+<p>We can now separate out the velocity in terms of parallel and perpendicular components. Since the parallel component crossed with the magnetic field is zero, we are left with</p>
+
+\[K_{n+1} - K_n = -\frac{m \omega^6_c \Delta t^6}{144} \Big(1 - \frac{\omega^2_c\Delta t^2}{8}\Big) \lVert \vvec_{\perp, n} \rVert^2.
+\label{eq:rkfour_ke}
+\tag{15}\]
+
+<p>From $\text{Eq.}~\eqref{eq:rkfour_ke}$, we can consider multiple cases:</p>
+
+<ul>
+  <li>Case 1: $\frac{\omega^2_c\Delta t^2}{8} = 1$,</li>
+  <li>Case 2: $\frac{\omega^2_c\Delta t^2}{8} &gt; 1$,</li>
+  <li>Case 3: $\frac{\omega^2_c\Delta t^2}{8} &lt; 1$.</li>
+</ul>
+
+<p>For case 1, $\text{Eq.}~\eqref{eq:rkfour_ke}$ becomes $K_{n+1} = K_n$ and we obtain conservation of energy. Note that while the kinetic energy is conserved, this does not mean that the trajectory is correct since the direction of the velocity is not accounted for in $\text{Eq.}~\eqref{eq:rkfour_ke}$. Another way for the system to conserve energy would be if $\vvec_{\perp, n} = 0$. This would mean that the particle only has parallel velocity, which corresponds to a constant planar velocity (hence conservation of energy) as discussed in the blog post last week.</p>
+
+<p>For case 2, we would get an increasing kinetic energy as time passes. As with the Forward Euler method, this is not a physical property, but a numerical property brought on by the intergrator we chose. The RK4 solution is unstable due to either a large cyclotron frequency or a large timestep, which introduces a small error in the form of a numerical increase in the perpendicular velocity at every timestep. For both scenarios, the timestep has to be adjusted to correctly account for the motion caused by the magnetic field, thus moving the system towards case 1 or 3. If the timestep is too large, then the gyration will not be properly accounted for, causing the RK4 to provide an inadequate solution.</p>
+
+<p>For case 3, we obtain a decreasing kinetic energy as time moves forward. This implies that the integrator is not reproducing the exactly circular trajectory, but instead introduces a small error in the form of a numerical reduction in the perpendicular velocity at every timestep. As before, this is not a physical property, but a numerical property brought on by the intergrator we chose. Note that for relatively short time periods this is not an issue and the RK4 provides a very good solution. A decreasing perpendicular velocity will only be apparent in the RK4 solutions if we take thousands of iterations.</p>
+
+<h2 id="results">Results</h2>
+<p>We will be solving the Lorentz force equation for a charged particle in a specific electromagnetic field configuration. The initial conditions are:</p>
+
+<ul>
+  <li>$\xvec_0 = \langle 0, 0, 0 \rangle$ [m],</li>
+  <li>$\vvec_0 = \langle 1, 0, 0 \rangle$ [m/s],</li>
+  <li>$\E = \langle 0, 0, 0 \rangle$ [N/C],</li>
+  <li>$\B = \langle 0, 0, 1 \rangle$ [T].</li>
+</ul>
+
+<p>We assume normalized units, i.e., $q = 1$ and $m = 1$. The timesteps we will use are $\Delta t = [0.1, 0.05, 0.01, 0.005]$ and the simulation will run over $4$ cycles.</p>
+
+<p>In <a href="#fig:euler_method_sols_with_errors_0.01">Fig. 1</a> we show the exact and numerical solutions to the Lorentz force and the gyro-motion for timestep $dt = 0.01$ using the Forward Euler method integrator. The top row shows the position, the middle row the velocity, and the bottom row the absolute error between the exact solution and the numerical solution from the Euler method. In <a href="#fig:euler_method_sols_with_errors_0.1">Fig. 2</a>, we show the same quantities, but for timestep $dt = 0.1$.</p>
+
+<p><a id="fig:euler_method_sols_with_errors_0.01"></a>
+<img src="/assets/images/computational-physics/plasma-physics/charged-particle-dynamics/trajectory_euler_dt_0.01.png" alt="Euler method trajectory with timestep dt = 0.01" />
+<img src="/assets/images/computational-physics/plasma-physics/charged-particle-dynamics/kinematics_err_euler_dt_0.01.png" alt="Euler method kinematics errors with timestep dt = 0.01" />
+<em>Figure 1: Euler method solutions with errors with timestep $dt = 0.01$.</em></p>
+
+<p><a id="fig:euler_method_sols_with_errors_0.1"></a>
+<img src="/assets/images/computational-physics/plasma-physics/charged-particle-dynamics/trajectory_euler_dt_0.1.png" alt="Euler method trajectory with timestep dt = 0.1" />
+<img src="/assets/images/computational-physics/plasma-physics/charged-particle-dynamics/kinematics_err_euler_dt_0.1.png" alt="Euler method kinematics errors with timestep dt = 0.1" />
+<em>Figure 2: Euler method solutions with errors with timestep $dt = 0.1$.</em></p>
+
+<p>As discussed in <a href="#sec:computational_methods">Computational Methods</a>, the Forward Euler method begins to lose accuracy as time goes on. This is evident from the plots on the left that show the position and velocity versus time. Initially, the position starts off well-approximated, but as more cycles are completed, the numerical velocity and position solutions begin to overshoot the exact solution. This is also evident by the plots on the right that show $y$ vs. $x$ and $v_y$ vs. $v_x$. The particle begins to spiral out of the expected circular trajectory. As the timestep increases, the inaccuracies greatly increase and the particle completely leave the exact trajectory. If we look at the bottom row of plots, the signed residual oscillates and the amplitudes of the oscillations slowly start growing as the particle travels more cycles.</p>
+
+<p><a id="fig:kinetic_energy_comparison_euler"></a>
+<img src="/assets/images/computational-physics/plasma-physics/charged-particle-dynamics/energy_err_euler_dt_0.01.png" alt="Kinetic energy calculated using the Euler method with dt = 0.01" />
+<img src="/assets/images/computational-physics/plasma-physics/charged-particle-dynamics/energy_err_euler_dt_0.1.png" alt="Kinetic energy calculated using the Euler method with dt = 0.1" />
+<em>Figure 3: Kinetic energy calculated using the Euler method solutions for two different timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$.</em></p>
+
+<p>In <a href="#fig:kinetic_energy_comparison_euler">Fig. 3</a>, we show the absolute, relative, and residual error of the kinetic energy calculated using the Forward Euler method integrator for both timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$. The residual error is signed, as opposed to the absolute and relative errors. As discussed in <a href="#sec:computational_methods">Computational Methods</a>, the kinetic energy increases as times goes on. For the smaller timestep (top plots), the kinetic energy appears linear. For the larger timestep (bottom plots), the kinetic energy now takes an increasing exponential form. This is exactly what we derived from the Forward Euler method integrator. The absolute and relative errors show the same conclusion.</p>
+
+<p><a id="fig:rk4_method_sols_with_errors_0.01"></a>
+<img src="/assets/images/computational-physics/plasma-physics/charged-particle-dynamics/trajectory_rk4_dt_0.01.png" alt="RK4 method trajectory with timestep dt = 0.01" />
+<img src="/assets/images/computational-physics/plasma-physics/charged-particle-dynamics/kinematics_err_rk4_dt_0.01.png" alt="RK4 method kinematics errors with timestep dt = 0.01" />
+<em>Figure 4: RK4 method solutions with errors with timestep $dt = 0.01$.</em></p>
+
+<p><a id="fig:rk4_method_sols_with_errors_0.1"></a>
+<img src="/assets/images/computational-physics/plasma-physics/charged-particle-dynamics/trajectory_rk4_dt_0.1.png" alt="RK4 method trajectory with timestep dt = 0.1" />
+<img src="/assets/images/computational-physics/plasma-physics/charged-particle-dynamics/kinematics_err_rk4_dt_0.1.png" alt="RK4 method kinematics errors with timestep dt = 0.1" />
+<em>Figure 5: RK4 method solutions with errors with timestep $dt = 0.1$.</em></p>
+
+<p>In <a href="#fig:rk4_method_sols_with_errors_0.01">Fig. 4</a>, we show the exact and numerical solutions to the Lorentz force and the gyro-motion for timestep $dt = 0.01$ using the RK4 integrator. The top row shows the position, the middle row the velocity, and the bottom row the absolute error between the exact solution and the numerical solution from the RK4 method. In <a href="#fig:rk4_method_sols_with_errors_0.1">Fig. 5</a>, we show the same quantities, but for timestep $dt = 0.1$.</p>
+
+<p>As discussed in <a href="#sec:computational_methods">Computational Methods</a>, the RK4 method provides stable solutions for our system throughout the time period we chose. The absolute errors are on order of $10^{-9}$ for timestep $dt = 0.01$. For the timestep $dt=0.1$, the absolute errors do fall to $10^{-5}$. Although the solutions are still fairly accurate, this decrease in accuracy is exactly what we predicted in <a href="#sec:computational_methods">Computational Methods</a> as the timestep increases.</p>
+
+<p><a id="fig:kinetic_energy_comparison_rk4"></a>
+<img src="/assets/images/computational-physics/plasma-physics/charged-particle-dynamics/energy_err_rk4_dt_0.01.png" alt="Kinetic energy calculated using the RK4 method with dt = 0.01" />
+<img src="/assets/images/computational-physics/plasma-physics/charged-particle-dynamics/energy_err_rk4_dt_0.1.png" alt="Kinetic energy calculated using the RK4 method with dt = 0.1" />
+<em>Figure 6: Kinetic energy calculated using the RK4 method solutions for two different timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$.</em></p>
+
+<p>In <a href="#fig:kinetic_energy_comparison_rk4">Fig. 6</a>, we show the absolute, relative, and residual error of the kinetic energy calculated using the RK4 method integrator for both timesteps: (top) $dt = 0.01$ and (bottom) $dt = 0.1$. As previously mentioned, the residual error is signed, as opposed to the absolute and relative errors. From the plots, we see that the kinetic energy does indeed decrease with consecutive time steps. As we predicted, the accuracy decreases as we increase the timestep. The error for the timestep $dt = 0.01$ is on the order of $10^{-12}$, while the error for the timestep $dt = 0.1$ is on the order of $10^{-7}$. This shows that the RK4 provides much more accurate solutions compared to the Forward Euler method.</p>
+
+<p><a id="fig:convergence"></a>
+<img src="/assets/images/computational-physics/plasma-physics/charged-particle-dynamics//pos_convergence.png" alt="Integrator convergence" />
+<em>Figure 7: Integrator convergence.</em></p>
+
+<p>In <a href="#fig:convergence">Fig. 7</a>, we show the convergence of the different integrators. For comparison purposes, we also included an additional integrator known as the Heun method. This is a second-order method that improves upon the Euler method and can be derived from the general RK4 method. The figure plots the natural logarithm of the maximum positional error versus the natural logarithm of the timestep size to determine the specified numerical method’s order of convergence. We have also drawn a best-fit line.</p>
+
+<p>In general, the slope of the best-fit line in log-log space should be $\sim 1$ for a first-order method, $\sim 2$ for a second-order method, and $\sim 4$ for a fourth-order method. From the figure, we see that the best-fit lines for the Heun and RK4 methods do in fact have the appropriate slopes, which we denote as $p$. On the other hand, the slope of the best-fit line for Euler’s method is not quite $1$, but this is due to the inaccuracies introduced due to the timestep size and the number of cycles as we discussed in <a href="#sec:computational_methods">Computational Methods</a> and as the error plots have shown. Overall, these results confirm that our integrators work as expected.</p>
+
+<h2 id="summary">Summary</h2>
+<p>We have introduced two different integrators for solving differential equations and explored some of their properties. We developed a simulation of a charged particle in a specific electromagnetic field configuration and solved the Lorentz force over different timesteps and analyzed the results. Finally, we plotted the convergence of the different integrators to verify that they were working correctly.</p>
+
+<p>Overall, we verified that our simulation accurately reproduced the physical behavior predicted by our theoretical derivations. We also confirmed that the integrators exhibited the expected properties. These results provide a solid foundation for applying these numerical methods to more complex physical systems in future simulations.</p>
+
+<p>The code presented in this post can be found on my Github under the <a href="https://github.com/AJG91/charged_particle_dynamics" title="cpd-repo">charged-particle-dynamics</a> repo <a class="citation" href="#Garcia2026CPD">[1]</a>. A PDF version of these this and last week’s post can be found in Ch. 1 of my computational plasma physics <a href="https://ajg91.github.io/assets/notes/computational-physics/plasma-physics/main.pdf" title="plasma-notes">notes</a>. Feel free to reach out if you have any questions about what we covered this week. Stay tuned for the next topic!</p>
+
+<ol class="bibliography"><li><span id="Garcia2026CPD">[1] Alberto J. Garcia, <i>The Dynamics of a Charged Particle in an Electromagnetic Field</i>, 2026. Available at: https://github.com/AJG91/charged-particle-dynamics.</span></li></ol>
+<p><a href="/" class="btn">⬅ Back to Home</a></p>
+
+        
+      </section>
+
+      <footer class="page__meta">
+        
+        
+
+
+        
+
+  <p class="page__date"><strong><i class="fas fa-fw fa-calendar-alt" aria-hidden="true"></i> Updated:</strong> <time class="dt-published" datetime="2026-11-15T00:00:00-08:00">November 15, 2026</time></p>
+
+      </footer>
+
+      
+
+      
+  <nav class="pagination">
+    
+      <a href="/posts/computational-physics/plasma-physics/charged_particle_dynamics_theory/" class="pagination--pager" title="Charged Particle Dynamics: Theory">Previous</a>
+    
+    
+      <a href="#" class="pagination--pager disabled">Next</a>
+    
+  </nav>
+
+
+    </div>
+
+    
+  </article>
+
+  
+  
+</div>
+
+      
+    </div>
+
+    
+
+    <div id="footer" class="page__footer">
+      <footer>
+        <!-- start custom footer snippets -->
+
+<!-- end custom footer snippets -->
+        
+
+<div class="page__footer-follow">
+  <ul class="social-icons">
+    
+
+    
+
+    
+      <li><a href="/feed.xml"><i class="fas fa-fw fa-rss-square" aria-hidden="true"></i> Feed</a></li>
+    
+  </ul>
+</div>
+
+
+<div class="page__footer-copyright">&copy; 2026 <a href="https://ajg91.github.io/">AJG&#39;s Homepage</a>. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> &amp; <a href="https://mademistakes.com/work/jekyll-themes/minimal-mistakes/" rel="nofollow">Minimal Mistakes</a>.</div>
+
+      </footer>
+    </div>
+
+    
+  <script src="/assets/js/main.min.js"></script>
+
+
+
+
+
+
+
+
+
+  </body>
+</html>
